@@ -1,8 +1,11 @@
 package webtools
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -560,6 +563,471 @@ func (t *LivePreviewTool) Execute(args map[string]interface{}) (*types.CallToolR
 				"url":       url,
 				"directory": directory,
 				"port":      port,
+			},
+		}},
+	}, nil
+}
+
+// ReadFileTool reads file contents
+type ReadFileTool struct {
+	logger *logger.Logger
+}
+
+func NewReadFileTool(log *logger.Logger) *ReadFileTool {
+	return &ReadFileTool{logger: log}
+}
+
+func (t *ReadFileTool) Name() string {
+	return "read_file"
+}
+
+func (t *ReadFileTool) Description() string {
+	return "Read the contents of a file"
+}
+
+func (t *ReadFileTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"path": map[string]interface{}{
+				"type":        "string",
+				"description": "Path to the file to read",
+			},
+		},
+		Required: []string{"path"},
+	}
+}
+
+func (t *ReadFileTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	
+	pathStr, ok := args["path"].(string)
+	if !ok {
+		return nil, fmt.Errorf("path must be a string")
+	}
+
+	// Clean the path to prevent directory traversal attacks
+	cleanPath := filepath.Clean(pathStr)
+	
+	// Read the file
+	content, err := os.ReadFile(cleanPath)
+	if err != nil {
+		t.logger.WithComponent("tools").Error("Failed to read file",
+			zap.String("path", cleanPath),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to read file %s: %w", cleanPath, err)
+	}
+
+	duration := time.Since(start).Milliseconds()
+	t.logger.WithComponent("tools").Info("File read successfully",
+		zap.String("path", cleanPath),
+		zap.Int("size_bytes", len(content)),
+		zap.Int64("duration_ms", duration))
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: string(content),
+			Data: map[string]interface{}{
+				"path":       cleanPath,
+				"size_bytes": len(content),
+				"encoding":   "utf-8",
+			},
+		}},
+	}, nil
+}
+
+// WriteFileTool writes content to files
+type WriteFileTool struct {
+	logger *logger.Logger
+}
+
+func NewWriteFileTool(log *logger.Logger) *WriteFileTool {
+	return &WriteFileTool{logger: log}
+}
+
+func (t *WriteFileTool) Name() string {
+	return "write_file"
+}
+
+func (t *WriteFileTool) Description() string {
+	return "Write content to a file, creating or overwriting as needed"
+}
+
+func (t *WriteFileTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"path": map[string]interface{}{
+				"type":        "string",
+				"description": "Path to the file to write",
+			},
+			"content": map[string]interface{}{
+				"type":        "string",
+				"description": "Content to write to the file",
+			},
+			"create_dirs": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Create parent directories if they don't exist",
+				"default":     false,
+			},
+		},
+		Required: []string{"path", "content"},
+	}
+}
+
+func (t *WriteFileTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	
+	pathStr, ok := args["path"].(string)
+	if !ok {
+		return nil, fmt.Errorf("path must be a string")
+	}
+
+	content, ok := args["content"].(string)
+	if !ok {
+		return nil, fmt.Errorf("content must be a string")
+	}
+
+	createDirs := false
+	if val, ok := args["create_dirs"].(bool); ok {
+		createDirs = val
+	}
+
+	// Clean the path
+	cleanPath := filepath.Clean(pathStr)
+	
+	// Create parent directories if requested
+	if createDirs {
+		dir := filepath.Dir(cleanPath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create directories for %s: %w", cleanPath, err)
+		}
+	}
+
+	// Write the file
+	err := os.WriteFile(cleanPath, []byte(content), 0644)
+	if err != nil {
+		t.logger.WithComponent("tools").Error("Failed to write file",
+			zap.String("path", cleanPath),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to write file %s: %w", cleanPath, err)
+	}
+
+	duration := time.Since(start).Milliseconds()
+	t.logger.WithComponent("tools").Info("File written successfully",
+		zap.String("path", cleanPath),
+		zap.Int("size_bytes", len(content)),
+		zap.Int64("duration_ms", duration))
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("Successfully wrote %d bytes to %s", len(content), cleanPath),
+			Data: map[string]interface{}{
+				"path":       cleanPath,
+				"size_bytes": len(content),
+				"created_dirs": createDirs,
+			},
+		}},
+	}, nil
+}
+
+// ListDirectoryTool lists directory contents
+type ListDirectoryTool struct {
+	logger *logger.Logger
+}
+
+func NewListDirectoryTool(log *logger.Logger) *ListDirectoryTool {
+	return &ListDirectoryTool{logger: log}
+}
+
+func (t *ListDirectoryTool) Name() string {
+	return "list_directory"
+}
+
+func (t *ListDirectoryTool) Description() string {
+	return "List the contents of a directory"
+}
+
+func (t *ListDirectoryTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"path": map[string]interface{}{
+				"type":        "string",
+				"description": "Path to the directory to list",
+				"default":     ".",
+			},
+			"show_hidden": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Include hidden files (starting with .)",
+				"default":     false,
+			},
+		},
+	}
+}
+
+func (t *ListDirectoryTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	
+	pathStr := "."
+	if val, ok := args["path"].(string); ok {
+		pathStr = val
+	}
+
+	showHidden := false
+	if val, ok := args["show_hidden"].(bool); ok {
+		showHidden = val
+	}
+
+	// Clean the path
+	cleanPath := filepath.Clean(pathStr)
+	
+	// Read directory
+	entries, err := os.ReadDir(cleanPath)
+	if err != nil {
+		t.logger.WithComponent("tools").Error("Failed to read directory",
+			zap.String("path", cleanPath),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to read directory %s: %w", cleanPath, err)
+	}
+
+	var items []map[string]interface{}
+	var totalSize int64
+
+	for _, entry := range entries {
+		name := entry.Name()
+		
+		// Skip hidden files if not requested
+		if !showHidden && strings.HasPrefix(name, ".") {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		item := map[string]interface{}{
+			"name":      name,
+			"type":      "file",
+			"size":      info.Size(),
+			"modified":  info.ModTime().Format(time.RFC3339),
+			"is_dir":    info.IsDir(),
+		}
+
+		if info.IsDir() {
+			item["type"] = "directory"
+		}
+
+		totalSize += info.Size()
+		items = append(items, item)
+	}
+
+	duration := time.Since(start).Milliseconds()
+	t.logger.WithComponent("tools").Info("Directory listed successfully",
+		zap.String("path", cleanPath),
+		zap.Int("item_count", len(items)),
+		zap.Int64("duration_ms", duration))
+
+	var text strings.Builder
+	text.WriteString(fmt.Sprintf("Directory listing for %s:\n", cleanPath))
+	for _, item := range items {
+		itemType := item["type"].(string)
+		name := item["name"].(string)
+		size := item["size"].(int64)
+		modified := item["modified"].(string)
+		
+		if itemType == "directory" {
+			text.WriteString(fmt.Sprintf("  📁 %s/ (modified: %s)\n", name, modified))
+		} else {
+			text.WriteString(fmt.Sprintf("  📄 %s (%d bytes, modified: %s)\n", name, size, modified))
+		}
+	}
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: text.String(),
+			Data: map[string]interface{}{
+				"path":       cleanPath,
+				"items":      items,
+				"item_count": len(items),
+				"total_size": totalSize,
+			},
+		}},
+	}, nil
+}
+
+// HTTPRequestTool makes HTTP requests
+type HTTPRequestTool struct {
+	logger *logger.Logger
+}
+
+func NewHTTPRequestTool(log *logger.Logger) *HTTPRequestTool {
+	return &HTTPRequestTool{logger: log}
+}
+
+func (t *HTTPRequestTool) Name() string {
+	return "http_request"
+}
+
+func (t *HTTPRequestTool) Description() string {
+	return "Make HTTP requests (GET, POST, PUT, DELETE, etc.)"
+}
+
+func (t *HTTPRequestTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"url": map[string]interface{}{
+				"type":        "string",
+				"description": "URL to request",
+			},
+			"method": map[string]interface{}{
+				"type":        "string",
+				"description": "HTTP method (GET, POST, PUT, DELETE, etc.)",
+				"default":     "GET",
+			},
+			"headers": map[string]interface{}{
+				"type":        "object",
+				"description": "HTTP headers as key-value pairs",
+				"default":     map[string]interface{}{},
+			},
+			"body": map[string]interface{}{
+				"type":        "string",
+				"description": "Request body (for POST, PUT, etc.)",
+			},
+			"json": map[string]interface{}{
+				"type":        "object",
+				"description": "JSON data to send (will set Content-Type: application/json)",
+			},
+			"timeout": map[string]interface{}{
+				"type":        "integer",
+				"description": "Request timeout in seconds",
+				"default":     30,
+			},
+		},
+		Required: []string{"url"},
+	}
+}
+
+func (t *HTTPRequestTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	
+	url, ok := args["url"].(string)
+	if !ok {
+		return nil, fmt.Errorf("url must be a string")
+	}
+
+	method := "GET"
+	if val, ok := args["method"].(string); ok {
+		method = strings.ToUpper(val)
+	}
+
+	timeout := 30
+	if val, ok := args["timeout"].(float64); ok {
+		timeout = int(val)
+	}
+
+	var body io.Reader
+	var bodyContent string
+
+	// Handle JSON body
+	if jsonData, ok := args["json"]; ok {
+		jsonBytes, err := json.Marshal(jsonData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal JSON: %w", err)
+		}
+		body = bytes.NewReader(jsonBytes)
+		bodyContent = string(jsonBytes)
+	} else if bodyStr, ok := args["body"].(string); ok {
+		body = strings.NewReader(bodyStr)
+		bodyContent = bodyStr
+	}
+
+	// Create request
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	if headers, ok := args["headers"].(map[string]interface{}); ok {
+		for key, value := range headers {
+			if valueStr, ok := value.(string); ok {
+				req.Header.Set(key, valueStr)
+			}
+		}
+	}
+
+	// Set Content-Type for JSON
+	if _, hasJSON := args["json"]; hasJSON {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	// Create client with timeout
+	client := &http.Client{
+		Timeout: time.Duration(timeout) * time.Second,
+	}
+
+	// Make request
+	resp, err := client.Do(req)
+	if err != nil {
+		t.logger.WithComponent("tools").Error("HTTP request failed",
+			zap.String("url", url),
+			zap.String("method", method),
+			zap.Error(err))
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	duration := time.Since(start).Milliseconds()
+	t.logger.WithComponent("tools").Info("HTTP request completed",
+		zap.String("url", url),
+		zap.String("method", method),
+		zap.Int("status_code", resp.StatusCode),
+		zap.Int("response_size", len(responseBody)),
+		zap.Int64("duration_ms", duration))
+
+	// Prepare response headers
+	responseHeaders := make(map[string]string)
+	for key, values := range resp.Header {
+		if len(values) > 0 {
+			responseHeaders[key] = values[0]
+		}
+	}
+
+	responseText := fmt.Sprintf("HTTP %s %s\nStatus: %d %s\nResponse Size: %d bytes\n\nHeaders:\n",
+		method, url, resp.StatusCode, resp.Status, len(responseBody))
+	
+	for key, value := range responseHeaders {
+		responseText += fmt.Sprintf("  %s: %s\n", key, value)
+	}
+	
+	responseText += fmt.Sprintf("\nBody:\n%s", string(responseBody))
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: responseText,
+			Data: map[string]interface{}{
+				"url":            url,
+				"method":         method,
+				"status_code":    resp.StatusCode,
+				"status":         resp.Status,
+				"headers":        responseHeaders,
+				"body":           string(responseBody),
+				"response_size":  len(responseBody),
+				"duration_ms":    duration,
+				"request_body":   bodyContent,
 			},
 		}},
 	}, nil

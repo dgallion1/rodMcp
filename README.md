@@ -6,14 +6,16 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 
 - 🤖 **Works with Claude** - Full MCP protocol support for seamless integration
 - 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless (browser visibility fixed!)
-- 🛠️ **6 Powerful Tools** - Create pages, navigate, screenshot, execute JS, visibility control, live preview
+- 🛠️ **10 Powerful Tools** - Browser automation + file system + HTTP requests
 - 🏠 **Easy Install** - No sudo required with local user installation
 - 🚀 **Auto Go Install** - Makefile can install Go locally if not present
 - ⚡ **Go 1.24.5+ Performance** - Fast, reliable browser automation
 
 ## 🛠️ Available Tools
 
-Once installed, Claude gains access to these powerful web development tools:
+Once installed, Claude gains access to these 10 powerful web development tools:
+
+### 🌐 Browser Automation Tools
 
 ### 📝 `create_page`
 Generate complete HTML pages with embedded CSS and JavaScript
@@ -44,6 +46,30 @@ Control browser visibility at runtime - switch between visible and headless mode
 Start local development server with auto-reload
 - **Purpose**: Live development and multi-page testing
 - **Example**: "Create a website and start preview server"
+
+### 📁 File System Tools
+
+### 📖 `read_file`
+Read the contents of any file
+- **Purpose**: Load existing files for editing or analysis
+- **Example**: "Read index.html and show me the current structure"
+
+### ✏️ `write_file`
+Write content to files, creating or overwriting as needed
+- **Purpose**: Save HTML, CSS, JS, or any text files
+- **Example**: "Save this modified CSS to styles.css"
+
+### 📋 `list_directory`
+List directory contents with file details
+- **Purpose**: Navigate project structure and find files
+- **Example**: "Show me all files in the src/ directory"
+
+### 🌐 Network Tools
+
+### 📡 `http_request`
+Make HTTP requests (GET, POST, PUT, DELETE, etc.)
+- **Purpose**: Test APIs, webhooks, and web services
+- **Example**: "Test the /api/users endpoint with a POST request"
 
 ## 🎬 Demo
 
@@ -95,20 +121,26 @@ That's it! No additional configuration needed. Claude can dynamically control br
 ### 4. Test with Claude
 Ask Claude: *"What web development tools do you have available?"*
 
-Claude should respond with the 6 RodMCP tools listed above.
+Claude should respond with the 10 RodMCP tools listed above.
 
 ## 💡 Example Use Cases
 
 ### 🎨 Creative Web Development
 ```
-"Create a portfolio website with a dark theme, smooth animations, 
-and a contact form. Show me the browser while you work."
+"Read my existing index.html file, create an enhanced version with 
+a dark theme and animations, then show me the result in the browser."
 ```
 
 ### 🧪 Automated Testing  
 ```
-"Navigate to localhost:3000 and test all the buttons and forms. 
-Take screenshots of any issues you find."
+"Navigate to localhost:3000, test all API endpoints with HTTP requests,
+then take screenshots of any issues you find."
+```
+
+### 📝 Full-Stack Development
+```
+"List all files in my project, read the API docs, create a new feature 
+page, and test it with HTTP requests to the backend."
 ```
 
 ### 📱 Responsive Design
@@ -133,7 +165,9 @@ Use visible browser mode so I can see each step."
 
 ```
 MCP Client ←→ JSON-RPC 2.0 ←→ MCP Server
-                                    ├── Web Dev Tools
+                                    ├── Browser Tools (6)
+                                    ├── File System Tools (3)  
+                                    ├── Network Tools (1)
                                     ├── Browser Manager (Rod)
                                     └── Logging System
 ```
@@ -176,6 +210,46 @@ Starts a local HTTP server for live development.
 **Parameters:**
 - `directory` (optional): Directory to serve (default: current)
 - `port` (optional): Server port (default: 8080)
+
+### read_file
+Reads the contents of a file.
+
+**Parameters:**
+- `path` (required): Path to the file to read
+
+**Returns:** File contents as text with metadata including file size and encoding.
+
+### write_file
+Writes content to a file, creating or overwriting as needed.
+
+**Parameters:**
+- `path` (required): Path to the file to write
+- `content` (required): Content to write to the file
+- `create_dirs` (optional): Create parent directories if they don't exist (default: false)
+
+**Returns:** Success message with file size and path information.
+
+### list_directory
+Lists the contents of a directory.
+
+**Parameters:**
+- `path` (optional): Path to the directory to list (default: current directory)
+- `show_hidden` (optional): Include hidden files starting with '.' (default: false)
+
+**Returns:** Formatted directory listing with file types, sizes, and modification dates.
+
+### http_request
+Makes HTTP requests to URLs.
+
+**Parameters:**
+- `url` (required): URL to request
+- `method` (optional): HTTP method - GET, POST, PUT, DELETE, etc. (default: GET)
+- `headers` (optional): HTTP headers as key-value pairs
+- `body` (optional): Request body for POST/PUT requests
+- `json` (optional): JSON data to send (automatically sets Content-Type)
+- `timeout` (optional): Request timeout in seconds (default: 30)
+
+**Returns:** HTTP response with status, headers, and body content.
 
 ## Development
 

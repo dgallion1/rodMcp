@@ -76,6 +76,14 @@ func main() {
 	mcpServer.RegisterTool(webtools.NewExecuteScriptTool(log, browserMgr))
 	mcpServer.RegisterTool(webtools.NewBrowserVisibilityTool(log, browserMgr))
 	mcpServer.RegisterTool(webtools.NewLivePreviewTool(log))
+	
+	// File system tools
+	mcpServer.RegisterTool(webtools.NewReadFileTool(log))
+	mcpServer.RegisterTool(webtools.NewWriteFileTool(log))
+	mcpServer.RegisterTool(webtools.NewListDirectoryTool(log))
+	
+	// Network tools
+	mcpServer.RegisterTool(webtools.NewHTTPRequestTool(log))
 
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -94,7 +102,7 @@ func main() {
 	// Send a log message to MCP client
 	mcpServer.SendLogMessage("info", "RodMCP server is ready for connections", map[string]interface{}{
 		"timestamp":        time.Now().UTC().Format(time.RFC3339),
-		"tools_registered": 6,
+		"tools_registered": 10,
 		"browser_config": map[string]interface{}{
 			"headless":      *headless,
 			"debug":         *debug,
