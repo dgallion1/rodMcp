@@ -1,64 +1,111 @@
 # RodMCP - MCP Web Development Controller
 
-A Go-based Model Context Protocol (MCP) server that provides web development tools using the Rod browser automation library.
+A Go-based Model Context Protocol (MCP) server that provides web development tools using the Rod browser automation library. Built for Claude and other MCP clients to enable programmatic web development, testing, and automation.
 
-## Features
+## 🌟 Highlights
 
-- **MCP Protocol 2025-06-18 Support**: Full JSON-RPC 2.0 implementation
-- **Browser Automation**: Chrome/Chromium control via Rod library
-- **Web Development Tools**:
-  - `create_page`: Generate HTML pages with CSS and JavaScript
-  - `navigate_page`: Browser navigation to URLs or local files
-  - `take_screenshot`: Capture page screenshots
-  - `execute_script`: Run JavaScript code in browser
-  - `live_preview`: Local HTTP server for live development
-- **Extensive Logging**: Structured JSON logging with file rotation
-- **Go 1.24**: Built with the latest Go version
+- 🤖 **Works with Claude** - Full MCP protocol support for seamless integration
+- 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless
+- 🛠️ **5 Powerful Tools** - Create pages, navigate, screenshot, execute JS, live preview
+- 🏠 **Easy Install** - No sudo required with local user installation
+- ⚡ **Go 1.24 Performance** - Fast, reliable browser automation
 
-## Installation
+## 🛠️ Available Tools
+
+Once installed, Claude gains access to these powerful web development tools:
+
+### 📝 `create_page`
+Generate complete HTML pages with embedded CSS and JavaScript
+- **Purpose**: Rapid prototyping and page creation
+- **Example**: "Create a responsive landing page for a coffee shop"
+
+### 🌐 `navigate_page`  
+Open URLs or local files in the browser
+- **Purpose**: Load pages for testing and interaction
+- **Example**: "Navigate to my website and test the contact form"
+
+### 📸 `take_screenshot`
+Capture visual snapshots of web pages
+- **Purpose**: Visual validation and documentation
+- **Example**: "Take a screenshot of the page after applying dark mode"
+
+### ⚡ `execute_script`
+Run JavaScript code in browser pages
+- **Purpose**: Dynamic interaction and testing
+- **Example**: "Click all buttons and test form validation"
+
+### 🚀 `live_preview`
+Start local development server with auto-reload
+- **Purpose**: Live development and multi-page testing
+- **Example**: "Create a website and start preview server"
+
+## 🎬 Demo
+
+Watch RodMCP in action:
 
 ```bash
-# Clone the repository
+./bin/demo
+```
+
+This shows Claude creating an interactive webpage, opening it in a visible browser, clicking buttons, changing themes, and taking screenshots - all automated!
+
+## 📦 Quick Start
+
+### 1. Get RodMCP
+```bash
 git clone <repository-url>
 cd rodmcp
-
-# Install dependencies
-go mod download
-
-# Build the server
-go build -o bin/rodmcp cmd/server/main.go
-
-# Build the test example
-go build -o bin/test-example examples/test_example.go
 ```
 
-## Usage
+### 2. Install (Choose One)
 
-### As MCP Server
-
+**🏠 Local Installation (Recommended - No sudo required):**
 ```bash
-# Start the MCP server (stdio transport)
-./bin/rodmcp
-
-# With custom options
-./bin/rodmcp -headless=false -debug=true -log-level=debug
+./install-local.sh
+./configs/setup-visible-browser-local.sh  # To watch Claude work
 ```
 
-### Command Line Options
-
-- `-headless`: Run browser in headless mode (default: true)
-- `-debug`: Enable browser debug mode (default: false)
-- `-log-level`: Logging level (debug, info, warn, error)
-- `-log-dir`: Log directory (default: logs)
-- `-slow-motion`: Delay between browser actions
-- `-window-width`: Browser window width (default: 1920)
-- `-window-height`: Browser window height (default: 1080)
-
-### Test Example
-
+**🌍 System-Wide Installation:**
 ```bash
-# Run the comprehensive test
-./bin/test-example
+./install.sh
+./configs/setup-visible-browser.sh  # To watch Claude work
+```
+
+### 3. Test with Claude
+Ask Claude: *"What web development tools do you have available?"*
+
+Claude should respond with the 5 RodMCP tools listed above.
+
+## 💡 Example Use Cases
+
+### 🎨 Creative Web Development
+```
+"Create a portfolio website with a dark theme, smooth animations, 
+and a contact form. Show me the browser while you work."
+```
+
+### 🧪 Automated Testing  
+```
+"Navigate to localhost:3000 and test all the buttons and forms. 
+Take screenshots of any issues you find."
+```
+
+### 📱 Responsive Design
+```
+"Create a mobile-friendly dashboard and test it at different 
+screen sizes. Show me how it looks on tablet and phone."
+```
+
+### 🚀 Live Development
+```
+"Build an interactive todo app with local storage, start a 
+preview server, and demonstrate all the features working."
+```
+
+### 🎓 Learning Tool
+```
+"Create an interactive CSS tutorial showing flexbox examples. 
+Use visible browser mode so I can see each step."
 ```
 
 ## Architecture
@@ -150,43 +197,50 @@ mcpServer.RegisterTool(webtools.NewYourTool(log, browserMgr))
 4. Write tests for new functionality
 5. Update documentation
 
-## Requirements
+## 🎬 Browser Visibility
 
-- Go 1.24+
-- Chrome/Chromium (automatically downloaded by Rod)
-- Linux/macOS/Windows
+RodMCP can run in two modes:
 
-## Installation
+### 👀 Visible Browser Mode
+- **See Claude work in real-time**
+- Great for learning and debugging
+- Configure with: `./configs/setup-visible-browser-local.sh`
 
-See [INSTALLATION.md](INSTALLATION.md) for detailed installation instructions.
+### ⚡ Headless Mode  
+- **Faster execution, no GUI**
+- Better for automation and production
+- Configure with: `./configs/setup-headless-browser-local.sh`
 
-### Quick Install
+### Switch Anytime
+You can easily switch between modes - just run the appropriate setup script and restart Claude.
 
-```bash
-# Option 1: Local user installation (no sudo required)
-./install-local.sh
-./configs/setup-visible-browser-local.sh  # To see browser
+## 📚 Documentation
 
-# Option 2: System-wide installation (requires sudo)
-./install.sh
-./configs/setup-visible-browser.sh  # To see browser
-```
+- **[Installation Guide](INSTALLATION.md)** - Complete setup and configuration
+- **[Local Install Guide](LOCAL_INSTALL.md)** - Install without sudo (recommended)
+- **[Browser Visibility](BROWSER_VISIBILITY.md)** - Control browser display modes
+- **[MCP Usage Examples](MCP_USAGE.md)** - How to use with Claude effectively
 
-## Documentation
+## 📋 System Requirements
 
-- [Installation Guide](INSTALLATION.md) - Complete setup and configuration
-- [Local Install Guide](LOCAL_INSTALL.md) - Install without sudo (recommended)
-- [Browser Visibility](BROWSER_VISIBILITY.md) - Control browser display
-- [MCP Usage Examples](MCP_USAGE.md) - How to use with Claude
+- **Go 1.24+** (for building from source)
+- **Chrome/Chromium** (automatically downloaded by Rod on first use)
+- **Platform**: Linux, macOS, or Windows
+- **RAM**: 512MB+ recommended
+- **Disk**: ~100MB for Chrome download
 
-## Demo
+## 🤝 Contributing
 
-Run the live browser demo to see RodMCP in action:
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
+- Adding new web development tools
+- Reporting bugs and requesting features  
+- Improving documentation
+- Testing and platform support
 
-```bash
-./bin/demo
-```
+## 📋 Changelog
 
-## License
+See [CHANGELOG.md](CHANGELOG.md) for detailed release history and changes.
 
-MIT License
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
