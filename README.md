@@ -163,19 +163,19 @@ See [INSTALLATION.md](INSTALLATION.md) for detailed installation instructions.
 ### Quick Install
 
 ```bash
-# Build and install
+# Option 1: Local user installation (no sudo required)
+./install-local.sh
+./configs/setup-visible-browser-local.sh  # To see browser
+
+# Option 2: System-wide installation (requires sudo)
 ./install.sh
-
-# Configure for visible browser (watch Claude work!)
-./configs/setup-visible-browser.sh
-
-# Or configure for headless mode (faster, no GUI)
-./configs/setup-headless-browser.sh
+./configs/setup-visible-browser.sh  # To see browser
 ```
 
 ## Documentation
 
-- [Installation Guide](INSTALLATION.md) - Setup and configuration
+- [Installation Guide](INSTALLATION.md) - Complete setup and configuration
+- [Local Install Guide](LOCAL_INSTALL.md) - Install without sudo (recommended)
 - [Browser Visibility](BROWSER_VISIBILITY.md) - Control browser display
 - [MCP Usage Examples](MCP_USAGE.md) - How to use with Claude
 

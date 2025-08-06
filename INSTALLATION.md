@@ -2,7 +2,22 @@
 
 This guide shows how to install and configure RodMCP as an MCP (Model Context Protocol) server for use with Claude and other MCP clients.
 
-## Quick Installation
+## Installation Methods
+
+### Local User Installation (No sudo required)
+
+```bash
+# Install for current user only
+./install-local.sh
+
+# Configure browser visibility
+./configs/setup-visible-browser-local.sh   # Show browser
+./configs/setup-headless-browser-local.sh  # Hide browser
+```
+
+This installs to `~/.local/bin` and doesn't require root access.
+
+### System-Wide Installation (Requires sudo)
 
 ### 1. Build RodMCP
 
