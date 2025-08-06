@@ -6,14 +6,14 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 
 - 🤖 **Works with Claude** - Full MCP protocol support for seamless integration
 - 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless (browser visibility fixed!)
-- 🛠️ **10 Powerful Tools** - Browser automation + file system + HTTP requests
+- 🛠️ **18 Comprehensive Tools** - Complete browser control + file system + HTTP requests
 - 🏠 **Easy Install** - No sudo required with local user installation
 - 🚀 **Auto Go Install** - Makefile can install Go locally if not present
 - ⚡ **Go 1.24.5+ Performance** - Fast, reliable browser automation
 
 ## 🛠️ Available Tools
 
-Once installed, Claude gains access to these 10 powerful web development tools:
+Once installed, Claude gains access to these 18 comprehensive web development tools:
 
 ### 🌐 Browser Automation Tools
 
@@ -46,6 +46,48 @@ Control browser visibility at runtime - switch between visible and headless mode
 Start local development server with auto-reload
 - **Purpose**: Live development and multi-page testing
 - **Example**: "Create a website and start preview server"
+
+### 🎯 Browser UI Control Tools
+
+### 🖱️ `click_element`
+Click on specific browser elements using CSS selectors
+- **Purpose**: Interact with buttons, links, and clickable elements
+- **Example**: "Click the submit button"
+
+### ⌨️ `type_text`
+Type text into input fields and textareas
+- **Purpose**: Fill forms and input fields
+- **Example**: "Type my email address in the login field"
+
+### ⏱️ `wait`
+Pause execution for a specified number of seconds
+- **Purpose**: Wait for animations, loading, or timed events
+- **Example**: "Wait 3 seconds for the animation to complete"
+
+### 🔍 `wait_for_element`
+Wait for an element to appear in the DOM
+- **Purpose**: Handle dynamic content and loading states
+- **Example**: "Wait for the success message to appear"
+
+### 📖 `get_element_text`
+Extract text content from browser elements
+- **Purpose**: Read page content, error messages, or form values
+- **Example**: "Get the text from the error message"
+
+### 🏷️ `get_element_attribute`
+Get attribute values from browser elements
+- **Purpose**: Read href, src, class, or any element attributes
+- **Example**: "Get the href attribute from the first link"
+
+### 📜 `scroll`
+Scroll the page by pixels or to specific elements
+- **Purpose**: Navigate long pages or bring elements into view
+- **Example**: "Scroll to the footer section"
+
+### 🎯 `hover_element`
+Hover over elements to trigger hover effects
+- **Purpose**: Reveal dropdown menus or hover-triggered content
+- **Example**: "Hover over the navigation menu"
 
 ### 📁 File System Tools
 
@@ -121,7 +163,7 @@ That's it! No additional configuration needed. Claude can dynamically control br
 ### 4. Test with Claude
 Ask Claude: *"What web development tools do you have available?"*
 
-Claude should respond with the 10 RodMCP tools listed above.
+Claude should respond with the 18 RodMCP tools listed above.
 
 ## 💡 Example Use Cases
 
@@ -165,7 +207,8 @@ Use visible browser mode so I can see each step."
 
 ```
 MCP Client ←→ JSON-RPC 2.0 ←→ MCP Server
-                                    ├── Browser Tools (6)
+                                    ├── Browser Automation Tools (6)
+                                    ├── Browser UI Control Tools (8)
                                     ├── File System Tools (3)  
                                     ├── Network Tools (1)
                                     ├── Browser Manager (Rod)

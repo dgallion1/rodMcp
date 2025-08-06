@@ -77,6 +77,16 @@ func main() {
 	mcpServer.RegisterTool(webtools.NewBrowserVisibilityTool(log, browserMgr))
 	mcpServer.RegisterTool(webtools.NewLivePreviewTool(log))
 	
+	// Browser UI control tools
+	mcpServer.RegisterTool(webtools.NewClickElementTool(log, browserMgr))
+	mcpServer.RegisterTool(webtools.NewTypeTextTool(log, browserMgr))
+	mcpServer.RegisterTool(webtools.NewWaitTool(log))
+	mcpServer.RegisterTool(webtools.NewWaitForElementTool(log, browserMgr))
+	mcpServer.RegisterTool(webtools.NewGetElementTextTool(log, browserMgr))
+	mcpServer.RegisterTool(webtools.NewGetElementAttributeTool(log, browserMgr))
+	mcpServer.RegisterTool(webtools.NewScrollTool(log, browserMgr))
+	mcpServer.RegisterTool(webtools.NewHoverElementTool(log, browserMgr))
+	
 	// File system tools
 	mcpServer.RegisterTool(webtools.NewReadFileTool(log))
 	mcpServer.RegisterTool(webtools.NewWriteFileTool(log))
@@ -102,7 +112,7 @@ func main() {
 	// Send a log message to MCP client
 	mcpServer.SendLogMessage("info", "RodMCP server is ready for connections", map[string]interface{}{
 		"timestamp":        time.Now().UTC().Format(time.RFC3339),
-		"tools_registered": 10,
+		"tools_registered": 18,
 		"browser_config": map[string]interface{}{
 			"headless":      *headless,
 			"debug":         *debug,

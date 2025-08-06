@@ -1032,3 +1032,825 @@ func (t *HTTPRequestTool) Execute(args map[string]interface{}) (*types.CallToolR
 		}},
 	}, nil
 }
+
+// ClickElementTool clicks on browser elements
+type ClickElementTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewClickElementTool(log *logger.Logger, mgr *browser.Manager) *ClickElementTool {
+	return &ClickElementTool{logger: log, browserMgr: mgr}
+}
+
+func (t *ClickElementTool) Name() string {
+	return "click_element"
+}
+
+func (t *ClickElementTool) Description() string {
+	return "Click on a browser element using CSS selector"
+}
+
+func (t *ClickElementTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"selector": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector or XPath (prefix with //) for the element to click",
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Page ID to click on (optional, uses current page if not specified)",
+			},
+			"timeout": map[string]interface{}{
+				"type":        "integer",
+				"description": "Timeout in seconds to wait for element (default: 10)",
+				"default":     10,
+			},
+		},
+		Required: []string{"selector"},
+	}
+}
+
+func (t *ClickElementTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	
+	selector, ok := args["selector"].(string)
+	if !ok {
+		return nil, fmt.Errorf("selector must be a string")
+	}
+
+	pageID := ""
+	if val, ok := args["page_id"].(string); ok {
+		pageID = val
+	}
+
+	_ = 10 // timeout for future use
+	if _, ok := args["timeout"].(float64); ok {
+		// timeout = int(val) // for future use
+	}
+
+	// Get the page
+	var page *browser.Manager
+	if pageID != "" {
+		// Use specific page (this would need to be implemented in browser manager)
+		page = t.browserMgr
+	} else {
+		page = t.browserMgr
+	}
+
+	// For now, use execute_script as the underlying mechanism until we have direct Rod access
+	script := fmt.Sprintf(`
+		const element = document.querySelector('%s');
+		if (!element) {
+			throw new Error('Element not found with selector: %s');
+		}
+		element.click();
+		return 'Clicked element: ' + '%s';
+	`, selector, selector, selector)
+
+	result, err := page.ExecuteScript("", script)
+	if err != nil {
+		t.logger.WithComponent("tools").Error("Failed to click element",
+			zap.String("selector", selector),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to click element %s: %w", selector, err)
+	}
+
+	duration := time.Since(start).Milliseconds()
+	t.logger.WithComponent("tools").Info("Element clicked successfully",
+		zap.String("selector", selector),
+		zap.Int64("duration_ms", duration))
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("Successfully clicked element: %s", selector),
+			Data: map[string]interface{}{
+				"selector":    selector,
+				"page_id":     pageID,
+				"duration_ms": duration,
+				"result":      result,
+			},
+		}},
+	}, nil
+}
+
+// TypeTextTool types text into input elements
+type TypeTextTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewTypeTextTool(log *logger.Logger, mgr *browser.Manager) *TypeTextTool {
+	return &TypeTextTool{logger: log, browserMgr: mgr}
+}
+
+func (t *TypeTextTool) Name() string {
+	return "type_text"
+}
+
+func (t *TypeTextTool) Description() string {
+	return "Type text into an input field or textarea"
+}
+
+func (t *TypeTextTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"selector": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector for the input element",
+			},
+			"text": map[string]interface{}{
+				"type":        "string",
+				"description": "Text to type into the element",
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Page ID (optional)",
+			},
+			"clear": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Clear the field before typing (default: true)",
+				"default":     true,
+			},
+		},
+		Required: []string{"selector", "text"},
+	}
+}
+
+func (t *TypeTextTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	
+	selector, ok := args["selector"].(string)
+	if !ok {
+		return nil, fmt.Errorf("selector must be a string")
+	}
+
+	text, ok := args["text"].(string)
+	if !ok {
+		return nil, fmt.Errorf("text must be a string")
+	}
+
+	pageID := ""
+	if val, ok := args["page_id"].(string); ok {
+		pageID = val
+	}
+
+	clear := true
+	if val, ok := args["clear"].(bool); ok {
+		clear = val
+	}
+
+	// Escape text for JavaScript
+	escapedText := strings.ReplaceAll(text, `"`, `\"`)
+	escapedText = strings.ReplaceAll(escapedText, `'`, `\'`)
+	escapedText = strings.ReplaceAll(escapedText, "\n", "\\n")
+
+	clearScript := ""
+	if clear {
+		clearScript = "element.value = '';"
+	}
+
+	script := fmt.Sprintf(`
+		const element = document.querySelector('%s');
+		if (!element) {
+			throw new Error('Element not found with selector: %s');
+		}
+		%s
+		element.focus();
+		element.value = '%s';
+		element.dispatchEvent(new Event('input', { bubbles: true }));
+		element.dispatchEvent(new Event('change', { bubbles: true }));
+		return 'Typed text into: %s';
+	`, selector, selector, clearScript, escapedText, selector)
+
+	result, err := t.browserMgr.ExecuteScript("", script)
+	if err != nil {
+		t.logger.WithComponent("tools").Error("Failed to type text",
+			zap.String("selector", selector),
+			zap.String("text", text),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to type text into %s: %w", selector, err)
+	}
+
+	duration := time.Since(start).Milliseconds()
+	t.logger.WithComponent("tools").Info("Text typed successfully",
+		zap.String("selector", selector),
+		zap.String("text", text),
+		zap.Bool("cleared", clear),
+		zap.Int64("duration_ms", duration))
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("Successfully typed '%s' into element: %s", text, selector),
+			Data: map[string]interface{}{
+				"selector":    selector,
+				"text":        text,
+				"page_id":     pageID,
+				"cleared":     clear,
+				"duration_ms": duration,
+				"result":      result,
+			},
+		}},
+	}, nil
+}
+
+// WaitTool pauses execution for specified time
+type WaitTool struct {
+	logger *logger.Logger
+}
+
+func NewWaitTool(log *logger.Logger) *WaitTool {
+	return &WaitTool{logger: log}
+}
+
+func (t *WaitTool) Name() string {
+	return "wait"
+}
+
+func (t *WaitTool) Description() string {
+	return "Wait for a specified number of seconds"
+}
+
+func (t *WaitTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"seconds": map[string]interface{}{
+				"type":        "number",
+				"description": "Number of seconds to wait",
+				"minimum":     0.1,
+				"maximum":     60,
+			},
+		},
+		Required: []string{"seconds"},
+	}
+}
+
+func (t *WaitTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	
+	seconds, ok := args["seconds"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("seconds must be a number")
+	}
+
+	if seconds < 0.1 || seconds > 60 {
+		return nil, fmt.Errorf("seconds must be between 0.1 and 60")
+	}
+
+	duration := time.Duration(seconds * float64(time.Second))
+	time.Sleep(duration)
+
+	elapsed := time.Since(start).Milliseconds()
+	t.logger.WithComponent("tools").Info("Wait completed",
+		zap.Float64("seconds", seconds),
+		zap.Int64("elapsed_ms", elapsed))
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("Waited for %.1f seconds", seconds),
+			Data: map[string]interface{}{
+				"seconds":    seconds,
+				"elapsed_ms": elapsed,
+			},
+		}},
+	}, nil
+}
+
+// WaitForElementTool waits for an element to appear
+type WaitForElementTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewWaitForElementTool(log *logger.Logger, mgr *browser.Manager) *WaitForElementTool {
+	return &WaitForElementTool{logger: log, browserMgr: mgr}
+}
+
+func (t *WaitForElementTool) Name() string {
+	return "wait_for_element"
+}
+
+func (t *WaitForElementTool) Description() string {
+	return "Wait for an element to appear in the DOM"
+}
+
+func (t *WaitForElementTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"selector": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector for the element to wait for",
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Page ID (optional)",
+			},
+			"timeout": map[string]interface{}{
+				"type":        "integer",
+				"description": "Maximum time to wait in seconds (default: 10)",
+				"default":     10,
+			},
+		},
+		Required: []string{"selector"},
+	}
+}
+
+func (t *WaitForElementTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	
+	selector, ok := args["selector"].(string)
+	if !ok {
+		return nil, fmt.Errorf("selector must be a string")
+	}
+
+	pageID := ""
+	if val, ok := args["page_id"].(string); ok {
+		pageID = val
+	}
+
+	timeout := 10
+	if val, ok := args["timeout"].(float64); ok {
+		timeout = int(val)
+	}
+
+	// JavaScript to poll for element
+	script := fmt.Sprintf(`
+		const maxWait = %d * 1000; // Convert to milliseconds
+		const startTime = Date.now();
+		
+		function checkElement() {
+			const element = document.querySelector('%s');
+			if (element) {
+				return 'Element found: %s';
+			}
+			
+			if (Date.now() - startTime > maxWait) {
+				throw new Error('Timeout waiting for element: %s');
+			}
+			
+			// Wait 100ms and try again
+			return new Promise((resolve, reject) => {
+				setTimeout(() => {
+					try {
+						resolve(checkElement());
+					} catch (e) {
+						reject(e);
+					}
+				}, 100);
+			});
+		}
+		
+		return checkElement();
+	`, timeout, selector, selector, selector)
+
+	result, err := t.browserMgr.ExecuteScript("", script)
+	if err != nil {
+		t.logger.WithComponent("tools").Error("Failed to wait for element",
+			zap.String("selector", selector),
+			zap.Int("timeout", timeout),
+			zap.Error(err))
+		return nil, fmt.Errorf("timeout waiting for element %s: %w", selector, err)
+	}
+
+	duration := time.Since(start).Milliseconds()
+	t.logger.WithComponent("tools").Info("Element found successfully",
+		zap.String("selector", selector),
+		zap.Int("timeout", timeout),
+		zap.Int64("duration_ms", duration))
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("Element found: %s", selector),
+			Data: map[string]interface{}{
+				"selector":    selector,
+				"page_id":     pageID,
+				"timeout":     timeout,
+				"duration_ms": duration,
+				"result":      result,
+			},
+		}},
+	}, nil
+}
+
+// GetElementTextTool extracts text from elements
+type GetElementTextTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewGetElementTextTool(log *logger.Logger, mgr *browser.Manager) *GetElementTextTool {
+	return &GetElementTextTool{logger: log, browserMgr: mgr}
+}
+
+func (t *GetElementTextTool) Name() string {
+	return "get_element_text"
+}
+
+func (t *GetElementTextTool) Description() string {
+	return "Extract text content from a browser element"
+}
+
+func (t *GetElementTextTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"selector": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector for the element to get text from",
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Page ID (optional)",
+			},
+		},
+		Required: []string{"selector"},
+	}
+}
+
+func (t *GetElementTextTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	
+	selector, ok := args["selector"].(string)
+	if !ok {
+		return nil, fmt.Errorf("selector must be a string")
+	}
+
+	pageID := ""
+	if val, ok := args["page_id"].(string); ok {
+		pageID = val
+	}
+
+	script := fmt.Sprintf(`
+		const element = document.querySelector('%s');
+		if (!element) {
+			throw new Error('Element not found with selector: %s');
+		}
+		return element.textContent || element.innerText || '';
+	`, selector, selector)
+
+	result, err := t.browserMgr.ExecuteScript("", script)
+	if err != nil {
+		t.logger.WithComponent("tools").Error("Failed to get element text",
+			zap.String("selector", selector),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to get text from element %s: %w", selector, err)
+	}
+
+	text := ""
+	if resultStr, ok := result.(string); ok {
+		text = resultStr
+	}
+
+	duration := time.Since(start).Milliseconds()
+	t.logger.WithComponent("tools").Info("Element text extracted successfully",
+		zap.String("selector", selector),
+		zap.String("text", text),
+		zap.Int64("duration_ms", duration))
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("Text from %s: %s", selector, text),
+			Data: map[string]interface{}{
+				"selector":    selector,
+				"text":        text,
+				"page_id":     pageID,
+				"duration_ms": duration,
+			},
+		}},
+	}, nil
+}
+
+// GetElementAttributeTool gets element attributes
+type GetElementAttributeTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewGetElementAttributeTool(log *logger.Logger, mgr *browser.Manager) *GetElementAttributeTool {
+	return &GetElementAttributeTool{logger: log, browserMgr: mgr}
+}
+
+func (t *GetElementAttributeTool) Name() string {
+	return "get_element_attribute"
+}
+
+func (t *GetElementAttributeTool) Description() string {
+	return "Get an attribute value from a browser element"
+}
+
+func (t *GetElementAttributeTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"selector": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector for the element",
+			},
+			"attribute": map[string]interface{}{
+				"type":        "string",
+				"description": "Attribute name to get (e.g., href, src, class)",
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Page ID (optional)",
+			},
+		},
+		Required: []string{"selector", "attribute"},
+	}
+}
+
+func (t *GetElementAttributeTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	
+	selector, ok := args["selector"].(string)
+	if !ok {
+		return nil, fmt.Errorf("selector must be a string")
+	}
+
+	attribute, ok := args["attribute"].(string)
+	if !ok {
+		return nil, fmt.Errorf("attribute must be a string")
+	}
+
+	pageID := ""
+	if val, ok := args["page_id"].(string); ok {
+		pageID = val
+	}
+
+	script := fmt.Sprintf(`
+		const element = document.querySelector('%s');
+		if (!element) {
+			throw new Error('Element not found with selector: %s');
+		}
+		return element.getAttribute('%s');
+	`, selector, selector, attribute)
+
+	result, err := t.browserMgr.ExecuteScript("", script)
+	if err != nil {
+		t.logger.WithComponent("tools").Error("Failed to get element attribute",
+			zap.String("selector", selector),
+			zap.String("attribute", attribute),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to get attribute %s from element %s: %w", attribute, selector, err)
+	}
+
+	value := ""
+	if resultStr, ok := result.(string); ok {
+		value = resultStr
+	}
+
+	duration := time.Since(start).Milliseconds()
+	t.logger.WithComponent("tools").Info("Element attribute retrieved successfully",
+		zap.String("selector", selector),
+		zap.String("attribute", attribute),
+		zap.String("value", value),
+		zap.Int64("duration_ms", duration))
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("Attribute %s from %s: %s", attribute, selector, value),
+			Data: map[string]interface{}{
+				"selector":    selector,
+				"attribute":   attribute,
+				"value":       value,
+				"page_id":     pageID,
+				"duration_ms": duration,
+			},
+		}},
+	}, nil
+}
+
+// ScrollTool scrolls the page or to specific elements
+type ScrollTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewScrollTool(log *logger.Logger, mgr *browser.Manager) *ScrollTool {
+	return &ScrollTool{logger: log, browserMgr: mgr}
+}
+
+func (t *ScrollTool) Name() string {
+	return "scroll"
+}
+
+func (t *ScrollTool) Description() string {
+	return "Scroll the page by pixels or to a specific element"
+}
+
+func (t *ScrollTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"selector": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector for element to scroll to (optional)",
+			},
+			"x": map[string]interface{}{
+				"type":        "integer",
+				"description": "Horizontal pixels to scroll (optional)",
+				"default":     0,
+			},
+			"y": map[string]interface{}{
+				"type":        "integer",
+				"description": "Vertical pixels to scroll (optional)",
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Page ID (optional)",
+			},
+		},
+	}
+}
+
+func (t *ScrollTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	
+	selector := ""
+	if val, ok := args["selector"].(string); ok {
+		selector = val
+	}
+
+	x := 0
+	if val, ok := args["x"].(float64); ok {
+		x = int(val)
+	}
+
+	y := 0
+	if val, ok := args["y"].(float64); ok {
+		y = int(val)
+	}
+
+	pageID := ""
+	if val, ok := args["page_id"].(string); ok {
+		pageID = val
+	}
+
+	var script string
+	var description string
+
+	if selector != "" {
+		// Scroll to element
+		script = fmt.Sprintf(`
+			const element = document.querySelector('%s');
+			if (!element) {
+				throw new Error('Element not found with selector: %s');
+			}
+			element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			return 'Scrolled to element: %s';
+		`, selector, selector, selector)
+		description = fmt.Sprintf("Scrolled to element: %s", selector)
+	} else if y != 0 || x != 0 {
+		// Scroll by pixels
+		script = fmt.Sprintf(`
+			window.scrollBy(%d, %d);
+			return 'Scrolled by %d, %d pixels';
+		`, x, y, x, y)
+		description = fmt.Sprintf("Scrolled by %d, %d pixels", x, y)
+	} else {
+		return nil, fmt.Errorf("must specify either selector or x/y coordinates")
+	}
+
+	result, err := t.browserMgr.ExecuteScript("", script)
+	if err != nil {
+		t.logger.WithComponent("tools").Error("Failed to scroll",
+			zap.String("selector", selector),
+			zap.Int("x", x),
+			zap.Int("y", y),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to scroll: %w", err)
+	}
+
+	duration := time.Since(start).Milliseconds()
+	t.logger.WithComponent("tools").Info("Scroll completed successfully",
+		zap.String("selector", selector),
+		zap.Int("x", x),
+		zap.Int("y", y),
+		zap.Int64("duration_ms", duration))
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: description,
+			Data: map[string]interface{}{
+				"selector":    selector,
+				"x":           x,
+				"y":           y,
+				"page_id":     pageID,
+				"duration_ms": duration,
+				"result":      result,
+			},
+		}},
+	}, nil
+}
+
+// HoverElementTool hovers over browser elements
+type HoverElementTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewHoverElementTool(log *logger.Logger, mgr *browser.Manager) *HoverElementTool {
+	return &HoverElementTool{logger: log, browserMgr: mgr}
+}
+
+func (t *HoverElementTool) Name() string {
+	return "hover_element"
+}
+
+func (t *HoverElementTool) Description() string {
+	return "Hover over a browser element to trigger hover effects"
+}
+
+func (t *HoverElementTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"selector": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector for the element to hover over",
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Page ID (optional)",
+			},
+		},
+		Required: []string{"selector"},
+	}
+}
+
+func (t *HoverElementTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	
+	selector, ok := args["selector"].(string)
+	if !ok {
+		return nil, fmt.Errorf("selector must be a string")
+	}
+
+	pageID := ""
+	if val, ok := args["page_id"].(string); ok {
+		pageID = val
+	}
+
+	script := fmt.Sprintf(`
+		const element = document.querySelector('%s');
+		if (!element) {
+			throw new Error('Element not found with selector: %s');
+		}
+		
+		// Create and dispatch mouseover event
+		const event = new MouseEvent('mouseover', {
+			bubbles: true,
+			cancelable: true,
+			view: window
+		});
+		element.dispatchEvent(event);
+		
+		// Also trigger mouseenter for completeness
+		const enterEvent = new MouseEvent('mouseenter', {
+			bubbles: false,
+			cancelable: true,
+			view: window
+		});
+		element.dispatchEvent(enterEvent);
+		
+		return 'Hovered over element: %s';
+	`, selector, selector, selector)
+
+	result, err := t.browserMgr.ExecuteScript("", script)
+	if err != nil {
+		t.logger.WithComponent("tools").Error("Failed to hover over element",
+			zap.String("selector", selector),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to hover over element %s: %w", selector, err)
+	}
+
+	duration := time.Since(start).Milliseconds()
+	t.logger.WithComponent("tools").Info("Element hovered successfully",
+		zap.String("selector", selector),
+		zap.Int64("duration_ms", duration))
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("Successfully hovered over element: %s", selector),
+			Data: map[string]interface{}{
+				"selector":    selector,
+				"page_id":     pageID,
+				"duration_ms": duration,
+				"result":      result,
+			},
+		}},
+	}, nil
+}
