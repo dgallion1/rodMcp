@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"rodmcp/internal/logger"
 	"rodmcp/internal/mcp"
 	"rodmcp/internal/webtools"
+	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,7 +19,29 @@ import (
 )
 
 func main() {
-	// Parse command line flags
+	// Check for subcommands first
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "list-tools", "tools":
+			listTools()
+			return
+		case "describe-tool":
+			if len(os.Args) < 3 {
+				fmt.Fprintf(os.Stderr, "Usage: %s describe-tool <tool_name>\n", os.Args[0])
+				os.Exit(1)
+			}
+			describeTool(os.Args[2])
+			return
+		case "schema":
+			exportSchema()
+			return
+		case "help", "-h", "--help":
+			showHelp()
+			return
+		}
+	}
+
+	// Parse command line flags for server mode
 	var (
 		logLevel     = flag.String("log-level", "info", "Log level (debug, info, warn, error)")
 		logDir       = flag.String("log-dir", "logs", "Log directory")
@@ -130,4 +155,279 @@ func main() {
 	}
 
 	log.Info("Shutting down RodMCP server")
+}
+
+// Helper function to get all registered tools
+func getAllTools() map[string]mcp.Tool {
+	// Create a temporary logger just for tool registration
+	logConfig := logger.Config{
+		LogLevel:    "error", // Minimize logging for CLI commands
+		LogDir:      "logs",
+		MaxSize:     10,
+		MaxBackups:  3,
+		MaxAge:      28,
+		Compress:    true,
+		Development: false,
+	}
+	
+	log, err := logger.New(logConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	
+	// Create minimal browser manager (won't actually start browser for CLI)
+	browserConfig := browser.Config{
+		Headless:     true,
+		Debug:        false,
+		SlowMotion:   0,
+		WindowWidth:  1920,
+		WindowHeight: 1080,
+	}
+	browserMgr := browser.NewManager(log, browserConfig)
+	
+	// Register all tools
+	tools := make(map[string]mcp.Tool)
+	
+	// Browser automation tools
+	tools["create_page"] = webtools.NewCreatePageTool(log)
+	tools["navigate_page"] = webtools.NewNavigatePageTool(log, browserMgr)
+	tools["take_screenshot"] = webtools.NewScreenshotTool(log, browserMgr)
+	tools["execute_script"] = webtools.NewExecuteScriptTool(log, browserMgr)
+	tools["set_browser_visibility"] = webtools.NewBrowserVisibilityTool(log, browserMgr)
+	tools["live_preview"] = webtools.NewLivePreviewTool(log)
+	
+	// Browser UI control tools
+	tools["click_element"] = webtools.NewClickElementTool(log, browserMgr)
+	tools["type_text"] = webtools.NewTypeTextTool(log, browserMgr)
+	tools["wait"] = webtools.NewWaitTool(log)
+	tools["wait_for_element"] = webtools.NewWaitForElementTool(log, browserMgr)
+	tools["get_element_text"] = webtools.NewGetElementTextTool(log, browserMgr)
+	tools["get_element_attribute"] = webtools.NewGetElementAttributeTool(log, browserMgr)
+	tools["scroll"] = webtools.NewScrollTool(log, browserMgr)
+	tools["hover_element"] = webtools.NewHoverElementTool(log, browserMgr)
+	
+	// File system tools
+	tools["read_file"] = webtools.NewReadFileTool(log)
+	tools["write_file"] = webtools.NewWriteFileTool(log)
+	tools["list_directory"] = webtools.NewListDirectoryTool(log)
+	
+	// Network tools
+	tools["http_request"] = webtools.NewHTTPRequestTool(log)
+	
+	return tools
+}
+
+func showHelp() {
+	fmt.Printf(`RodMCP - Model Context Protocol Server for Web Development
+
+USAGE:
+    %s [COMMAND] [FLAGS]
+
+COMMANDS:
+    (no command)       Start MCP server (default)
+    list-tools, tools  List all available MCP tools
+    describe-tool NAME Show detailed documentation for a specific tool
+    schema            Export complete MCP tool schema as JSON
+    help              Show this help message
+
+SERVER FLAGS:
+    --headless            Run browser in headless mode (default: false)
+    --debug               Enable browser debug mode (default: false)
+    --log-level LEVEL     Log level: debug, info, warn, error (default: info)
+    --log-dir DIR         Log directory (default: logs)
+    --slow-motion DURATION Slow motion delay between actions
+    --window-width WIDTH  Browser window width (default: 1920)
+    --window-height HEIGHT Browser window height (default: 1080)
+
+EXAMPLES:
+    %s                    # Start MCP server
+    %s list-tools         # Show all available tools
+    %s describe-tool click_element  # Show tool documentation
+    %s schema            # Export tool definitions
+    %s --headless        # Start server in headless mode
+
+For more information, see: https://github.com/your-org/rodmcp
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+}
+
+func listTools() {
+	fmt.Println("🛠️  RodMCP Available Tools")
+	fmt.Println("=" + strings.Repeat("=", 50))
+	fmt.Printf("Total: 18 comprehensive web development tools\n\n")
+	
+	tools := getAllTools()
+	
+	// Group tools by category
+	categories := map[string][]string{
+		"🌐 Browser Automation": {
+			"create_page", "navigate_page", "take_screenshot", 
+			"execute_script", "set_browser_visibility", "live_preview",
+		},
+		"🎯 Browser UI Control": {
+			"click_element", "type_text", "wait", "wait_for_element",
+			"get_element_text", "get_element_attribute", "scroll", "hover_element",
+		},
+		"📁 File System": {
+			"read_file", "write_file", "list_directory",
+		},
+		"🌐 Network": {
+			"http_request",
+		},
+	}
+	
+	for category, toolNames := range categories {
+		fmt.Printf("%s (%d tools)\n", category, len(toolNames))
+		fmt.Println(strings.Repeat("-", 40))
+		
+		for _, name := range toolNames {
+			if tool, exists := tools[name]; exists {
+				fmt.Printf("  %-20s %s\n", name, tool.Description())
+			}
+		}
+		fmt.Println()
+	}
+	
+	fmt.Printf("📋 Usage Examples:\n")
+	fmt.Printf("  %s describe-tool click_element  # Get detailed docs\n", os.Args[0])
+	fmt.Printf("  %s schema                      # Export JSON schema\n", os.Args[0])
+}
+
+func describeTool(toolName string) {
+	tools := getAllTools()
+	
+	tool, exists := tools[toolName]
+	if !exists {
+		fmt.Fprintf(os.Stderr, "❌ Tool '%s' not found.\n\n", toolName)
+		fmt.Fprintf(os.Stderr, "Available tools:\n")
+		
+		var names []string
+		for name := range tools {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		
+		for _, name := range names {
+			fmt.Fprintf(os.Stderr, "  - %s\n", name)
+		}
+		os.Exit(1)
+	}
+	
+	schema := tool.InputSchema()
+	
+	fmt.Printf("🛠️  Tool: %s\n", tool.Name())
+	fmt.Printf("=" + strings.Repeat("=", len(tool.Name())+10) + "\n")
+	fmt.Printf("📖 Description: %s\n\n", tool.Description())
+	
+	fmt.Printf("📋 Parameters:\n")
+	if schema.Required != nil && len(schema.Required) > 0 {
+		fmt.Printf("  Required: %s\n", strings.Join(schema.Required, ", "))
+	} else {
+		fmt.Printf("  Required: (none)\n")
+	}
+	
+	if props := schema.Properties; props != nil {
+		fmt.Println()
+		for paramName, paramDef := range props {
+			if paramMap, ok := paramDef.(map[string]interface{}); ok {
+				paramType := "unknown"
+				if t, ok := paramMap["type"].(string); ok {
+					paramType = t
+				}
+				
+				description := ""
+				if d, ok := paramMap["description"].(string); ok {
+					description = d
+				}
+				
+				required := ""
+				if schema.Required != nil {
+					for _, req := range schema.Required {
+						if req == paramName {
+							required = " (required)"
+							break
+						}
+					}
+				}
+				
+				fmt.Printf("  %-15s [%s]%s\n", paramName, paramType, required)
+				if description != "" {
+					fmt.Printf("                  %s\n", description)
+				}
+				
+				// Show default value if present
+				if def, ok := paramMap["default"]; ok {
+					fmt.Printf("                  Default: %v\n", def)
+				}
+				
+				// Show constraints
+				if min, ok := paramMap["minimum"]; ok {
+					fmt.Printf("                  Minimum: %v\n", min)
+				}
+				if max, ok := paramMap["maximum"]; ok {
+					fmt.Printf("                  Maximum: %v\n", max)
+				}
+				
+				fmt.Println()
+			}
+		}
+	}
+	
+	fmt.Printf("💡 Example Usage:\n")
+	switch tool.Name() {
+	case "click_element":
+		fmt.Printf(`  {"selector": "#submit-button"}
+  {"selector": ".menu-item", "timeout": 5}`)
+	case "type_text":
+		fmt.Printf(`  {"selector": "#email", "text": "user@example.com"}
+  {"selector": "input[name='password']", "text": "secret", "clear": false}`)
+	case "wait":
+		fmt.Printf(`  {"seconds": 3}
+  {"seconds": 0.5}`)
+	case "http_request":
+		fmt.Printf(`  {"url": "https://api.example.com/users", "method": "GET"}
+  {"url": "https://api.example.com/users", "method": "POST", "json": {"name": "John"}}`)
+	case "read_file":
+		fmt.Printf(`  {"path": "index.html"}
+  {"path": "./src/components/header.js"}`)
+	default:
+		fmt.Printf("  (Use 'rodmcp schema' to see complete parameter specifications)")
+	}
+	
+	fmt.Println()
+}
+
+func exportSchema() {
+	tools := getAllTools()
+	
+	// Create MCP-compatible schema
+	schema := map[string]interface{}{
+		"tools": make([]map[string]interface{}, 0, len(tools)),
+	}
+	
+	// Sort tools by name for consistent output
+	var names []string
+	for name := range tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	
+	for _, name := range names {
+		tool := tools[name]
+		toolSchema := map[string]interface{}{
+			"name":        tool.Name(),
+			"description": tool.Description(),
+			"inputSchema": tool.InputSchema(),
+		}
+		schema["tools"] = append(schema["tools"].([]map[string]interface{}), toolSchema)
+	}
+	
+	// Output JSON
+	output, err := json.MarshalIndent(schema, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating schema: %v\n", err)
+		os.Exit(1)
+	}
+	
+	fmt.Println(string(output))
 }
