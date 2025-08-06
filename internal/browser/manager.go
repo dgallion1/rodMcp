@@ -13,26 +13,26 @@ import (
 )
 
 type Manager struct {
-	logger   *logger.Logger
-	browser  *rod.Browser
-	pages    map[string]*rod.Page
-	mutex    sync.RWMutex
-	ctx      context.Context
-	cancel   context.CancelFunc
-	config   Config
+	logger  *logger.Logger
+	browser *rod.Browser
+	pages   map[string]*rod.Page
+	mutex   sync.RWMutex
+	ctx     context.Context
+	cancel  context.CancelFunc
+	config  Config
 }
 
 type Config struct {
-	Headless    bool
-	Debug       bool
-	SlowMotion  time.Duration
-	WindowWidth int
+	Headless     bool
+	Debug        bool
+	SlowMotion   time.Duration
+	WindowWidth  int
 	WindowHeight int
 }
 
 func NewManager(log *logger.Logger, config Config) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	return &Manager{
 		logger: log,
 		pages:  make(map[string]*rod.Page),
@@ -52,6 +52,11 @@ func (m *Manager) Start(config Config) error {
 	l := launcher.New().
 		Headless(config.Headless).
 		Set("window-size", fmt.Sprintf("%d,%d", config.WindowWidth, config.WindowHeight))
+
+	// When not headless, ensure the window is visible
+	if !config.Headless {
+		l = l.Delete("no-startup-window")
+	}
 
 	if config.Debug {
 		l = l.Devtools(true)
@@ -90,7 +95,7 @@ func (m *Manager) Stop() error {
 	// Close all pages
 	for id, page := range m.pages {
 		if err := page.Close(); err != nil {
-			m.logger.WithComponent("browser").Error("Failed to close page", 
+			m.logger.WithComponent("browser").Error("Failed to close page",
 				zap.String("page_id", id),
 				zap.Error(err))
 		}
@@ -100,7 +105,7 @@ func (m *Manager) Stop() error {
 	// Close browser
 	if m.browser != nil {
 		if err := m.browser.Close(); err != nil {
-			m.logger.WithComponent("browser").Error("Failed to close browser", 
+			m.logger.WithComponent("browser").Error("Failed to close browser",
 				zap.Error(err))
 		}
 	}
@@ -114,7 +119,7 @@ func (m *Manager) Stop() error {
 
 func (m *Manager) NewPage(url string) (*rod.Page, string, error) {
 	start := time.Now()
-	
+
 	if m.browser == nil {
 		return nil, "", fmt.Errorf("browser not started")
 	}
@@ -122,7 +127,7 @@ func (m *Manager) NewPage(url string) (*rod.Page, string, error) {
 	page := m.browser.MustPage()
 
 	pageID := fmt.Sprintf("page_%d", time.Now().UnixNano())
-	
+
 	m.mutex.Lock()
 	m.pages[pageID] = page
 	m.mutex.Unlock()
@@ -132,7 +137,7 @@ func (m *Manager) NewPage(url string) (*rod.Page, string, error) {
 			m.closePage(pageID)
 			return nil, "", fmt.Errorf("failed to navigate to %s: %w", url, err)
 		}
-		
+
 		if err := page.WaitLoad(); err != nil {
 			m.closePage(pageID)
 			return nil, "", fmt.Errorf("failed to wait for page load: %w", err)
@@ -326,7 +331,7 @@ func (m *Manager) SetVisibility(visible bool) error {
 
 	duration := time.Since(start).Milliseconds()
 	m.logger.LogBrowserAction("visibility_changed", mode, duration)
-	
+
 	m.logger.WithComponent("browser").Info("Browser visibility changed successfully",
 		zap.String("mode", mode),
 		zap.Int("pages_restored", len(pageURLs)))

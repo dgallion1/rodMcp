@@ -14,7 +14,7 @@ import (
 func main() {
 	fmt.Println("🤖 LLM Browser Capabilities Demo")
 	fmt.Println("Let's see what the LLM can and cannot do...")
-	
+
 	// Initialize logger
 	logConfig := logger.Config{
 		LogLevel:    "info",
@@ -430,17 +430,17 @@ func main() {
 	fmt.Println("✅ Take screenshots to 'see' the page")
 	fmt.Println("✅ Read dynamic content and state changes")
 	fmt.Println("✅ Detect changes made by human users")
-	
+
 	fmt.Println("\n🤖 WHAT THE LLM CANNOT DO:")
 	fmt.Println("❌ See your mouse cursor position")
 	fmt.Println("❌ Detect mouse movements without clicks")
 	fmt.Println("❌ React in real-time to your actions")
 	fmt.Println("❌ See content outside the browser window")
 	fmt.Println("❌ Access your keyboard input outside the browser")
-	
+
 	fmt.Println("\n📊 INTERACTION SUMMARY:")
 	fmt.Println("• The LLM reads page state through JavaScript")
-	fmt.Println("• Screenshots provide visual 'snapshots'")  
+	fmt.Println("• Screenshots provide visual 'snapshots'")
 	fmt.Println("• All interactions are programmatic via browser automation")
 	fmt.Println("• Both human and LLM actions are logged by the page")
 	fmt.Println(strings.Repeat("=", 60))

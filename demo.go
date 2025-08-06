@@ -13,7 +13,7 @@ import (
 func main() {
 	fmt.Println("🎬 Live Browser Demo - Watch Claude Work!")
 	fmt.Println("=========================================")
-	
+
 	// Initialize logger
 	logConfig := logger.Config{
 		LogLevel:    "info",
@@ -33,9 +33,9 @@ func main() {
 
 	// VISIBLE browser configuration
 	browserConfig := browser.Config{
-		Headless:     false,  // 🖥️ BROWSER WILL BE VISIBLE
+		Headless:     false, // 🖥️ BROWSER WILL BE VISIBLE
 		Debug:        false,
-		SlowMotion:   1 * time.Second,  // Slow for demonstration
+		SlowMotion:   1 * time.Second, // Slow for demonstration
 		WindowWidth:  1200,
 		WindowHeight: 800,
 	}
@@ -462,7 +462,7 @@ func main() {
 	fmt.Println("   • claude_demo_final.png - Screenshot of the result")
 	fmt.Println("")
 	fmt.Println("🚀 This is what Claude can do for your web development projects!")
-	
+
 	fmt.Println("\n⏱️  Keeping browser open for 15 more seconds so you can explore...")
 	time.Sleep(15 * time.Second)
 }

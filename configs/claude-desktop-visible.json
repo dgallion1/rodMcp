@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "rodmcp": {
-      "command": "/usr/local/bin/rodmcp",
+      "command": "/home/darrell/.local/bin/rodmcp",
       "args": [
         "--headless=false",
         "--debug=false",

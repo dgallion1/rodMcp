@@ -123,7 +123,7 @@ func (t *CreatePageTool) Execute(args map[string]interface{}) (*types.CallToolRe
 	}
 
 	absPath, _ := filepath.Abs(filename)
-	
+
 	return &types.CallToolResponse{
 		Content: []types.ToolContent{{
 			Type: "text",
@@ -194,7 +194,7 @@ func (t *NavigatePageTool) Execute(args map[string]interface{}) (*types.CallTool
 	}
 
 	info, _ := t.browser.GetPageInfo(pageID)
-	
+
 	return &types.CallToolResponse{
 		Content: []types.ToolContent{{
 			Type: "text",
@@ -294,7 +294,7 @@ func (t *ScreenshotTool) Execute(args map[string]interface{}) (*types.CallToolRe
 
 	// Return base64 encoded image
 	encoded := base64.StdEncoding.EncodeToString(screenshot)
-	
+
 	return &types.CallToolResponse{
 		Content: []types.ToolContent{{
 			Type:     "image",
@@ -545,13 +545,13 @@ func (t *LivePreviewTool) Execute(args map[string]interface{}) (*types.CallToolR
 
 	go func() {
 		if err := t.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			t.logger.WithComponent("webtools").Error("Preview server error", 
+			t.logger.WithComponent("webtools").Error("Preview server error",
 				zap.Error(err))
 		}
 	}()
 
 	url := fmt.Sprintf("http://localhost:%d", port)
-	
+
 	return &types.CallToolResponse{
 		Content: []types.ToolContent{{
 			Type: "text",

@@ -11,7 +11,7 @@ import (
 
 func main() {
 	fmt.Println("🔄 Interactive Test - You can click while automation runs!")
-	
+
 	// Initialize logger
 	logConfig := logger.Config{
 		LogLevel:    "info",
@@ -31,7 +31,7 @@ func main() {
 
 	// Initialize browser manager with VISIBLE window
 	browserConfig := browser.Config{
-		Headless:     false,  // ← VISIBLE BROWSER
+		Headless:     false, // ← VISIBLE BROWSER
 		Debug:        false,
 		SlowMotion:   500 * time.Millisecond,
 		WindowWidth:  1000,
@@ -262,7 +262,7 @@ func main() {
 	// Simulate bot clicks every 2 seconds for 20 seconds
 	for i := 1; i <= 10; i++ {
 		fmt.Printf("🤖 Bot click #%d\n", i)
-		
+
 		// Bot clicks the green button
 		scriptArgs := map[string]interface{}{
 			"script": "document.getElementById('botBtn').click();",
@@ -277,7 +277,7 @@ func main() {
 	}
 
 	fmt.Println("\n📊 Getting final stats...")
-	
+
 	// Get final stats
 	scriptArgs := map[string]interface{}{
 		"script": `
@@ -301,6 +301,6 @@ func main() {
 
 	fmt.Println("\n🏁 Test complete! Browser will stay open for 10 more seconds...")
 	fmt.Println("👤 Feel free to keep clicking to see real-time updates!")
-	
+
 	time.Sleep(10 * time.Second)
 }

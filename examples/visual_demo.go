@@ -12,7 +12,7 @@ import (
 
 func main() {
 	fmt.Println("🎬 RodMCP Visual Demo - Browser will be visible!")
-	
+
 	// Initialize logger
 	logConfig := logger.Config{
 		LogLevel:    "info",
@@ -32,9 +32,9 @@ func main() {
 
 	// Initialize browser manager with VISIBLE window
 	browserConfig := browser.Config{
-		Headless:     false,  // ← VISIBLE BROWSER
+		Headless:     false, // ← VISIBLE BROWSER
 		Debug:        false,
-		SlowMotion:   1 * time.Second,  // Slow for demo
+		SlowMotion:   1 * time.Second, // Slow for demo
 		WindowWidth:  1200,
 		WindowHeight: 800,
 	}
@@ -340,7 +340,7 @@ func main() {
 	fmt.Println("   • visual_demo.html - Interactive demo page")
 	fmt.Println("   • visual_demo_final.png - Final screenshot")
 	fmt.Println("   • demo_logs/ - Demo log files")
-	
+
 	fmt.Println("\n⏱️  Keeping browser open for 10 more seconds...")
 	time.Sleep(10 * time.Second)
 }

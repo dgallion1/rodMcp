@@ -19,9 +19,9 @@ type JSONRPCRequest struct {
 }
 
 type JSONRPCResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      interface{} `json:"id"`
-	Result  interface{} `json:"result,omitempty"`
+	JSONRPC string        `json:"jsonrpc"`
+	ID      interface{}   `json:"id"`
+	Result  interface{}   `json:"result,omitempty"`
 	Error   *JSONRPCError `json:"error,omitempty"`
 }
 
@@ -33,15 +33,15 @@ type JSONRPCError struct {
 
 // MCP specific message types
 type InitializeRequest struct {
-	ProtocolVersion MCPVersion      `json:"protocolVersion"`
+	ProtocolVersion MCPVersion         `json:"protocolVersion"`
 	Capabilities    ClientCapabilities `json:"capabilities"`
-	ClientInfo      ClientInfo      `json:"clientInfo"`
+	ClientInfo      ClientInfo         `json:"clientInfo"`
 }
 
 type InitializeResponse struct {
-	ProtocolVersion MCPVersion        `json:"protocolVersion"`
+	ProtocolVersion MCPVersion         `json:"protocolVersion"`
 	Capabilities    ServerCapabilities `json:"capabilities"`
-	ServerInfo      ServerInfo        `json:"serverInfo"`
+	ServerInfo      ServerInfo         `json:"serverInfo"`
 }
 
 type ClientCapabilities struct {
@@ -50,11 +50,11 @@ type ClientCapabilities struct {
 }
 
 type ServerCapabilities struct {
-	Logging      *LoggingCapability      `json:"logging,omitempty"`
-	Prompts      *PromptsCapability      `json:"prompts,omitempty"`
-	Resources    *ResourcesCapability    `json:"resources,omitempty"`
-	Tools        *ToolsCapability        `json:"tools,omitempty"`
-	Experimental map[string]interface{}  `json:"experimental,omitempty"`
+	Logging      *LoggingCapability     `json:"logging,omitempty"`
+	Prompts      *PromptsCapability     `json:"prompts,omitempty"`
+	Resources    *ResourcesCapability   `json:"resources,omitempty"`
+	Tools        *ToolsCapability       `json:"tools,omitempty"`
+	Experimental map[string]interface{} `json:"experimental,omitempty"`
 }
 
 type LoggingCapability struct{}
@@ -74,9 +74,9 @@ type ServerInfo struct {
 
 // Tool related types
 type Tool struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description,omitempty"`
-	InputSchema ToolSchema  `json:"inputSchema"`
+	Name        string     `json:"name"`
+	Description string     `json:"description,omitempty"`
+	InputSchema ToolSchema `json:"inputSchema"`
 }
 
 type ToolSchema struct {

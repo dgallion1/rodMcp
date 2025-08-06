@@ -45,12 +45,12 @@ func (s *Server) RegisterTool(tool Tool) {
 	s.toolsMutex.Lock()
 	defer s.toolsMutex.Unlock()
 	s.tools[tool.Name()] = tool
-	s.logger.WithComponent("mcp").Info("Tool registered", 
+	s.logger.WithComponent("mcp").Info("Tool registered",
 		zap.String("tool", tool.Name()))
 }
 
 func (s *Server) Start() error {
-	s.logger.WithComponent("mcp").Info("Starting MCP server", 
+	s.logger.WithComponent("mcp").Info("Starting MCP server",
 		zap.String("version", string(s.version)))
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -60,11 +60,11 @@ func (s *Server) Start() error {
 			continue
 		}
 
-		s.logger.WithComponent("mcp").Debug("Received message", 
+		s.logger.WithComponent("mcp").Debug("Received message",
 			zap.String("message", line))
 
 		if err := s.handleMessage([]byte(line)); err != nil {
-			s.logger.WithComponent("mcp").Error("Failed to handle message", 
+			s.logger.WithComponent("mcp").Error("Failed to handle message",
 				zap.Error(err))
 		}
 	}
@@ -111,7 +111,7 @@ func (s *Server) handleInitialize(req *types.JSONRPCRequest) error {
 
 	// Version negotiation
 	if initReq.ProtocolVersion != s.version {
-		s.logger.WithComponent("mcp").Warn("Protocol version mismatch", 
+		s.logger.WithComponent("mcp").Warn("Protocol version mismatch",
 			zap.String("client_version", string(initReq.ProtocolVersion)),
 			zap.String("server_version", string(s.version)))
 	}
@@ -119,7 +119,7 @@ func (s *Server) handleInitialize(req *types.JSONRPCRequest) error {
 	response := types.InitializeResponse{
 		ProtocolVersion: s.version,
 		Capabilities: types.ServerCapabilities{
-			Tools: &types.ToolsCapability{},
+			Tools:   &types.ToolsCapability{},
 			Logging: &types.LoggingCapability{},
 		},
 		ServerInfo: s.info,
@@ -210,7 +210,7 @@ func (s *Server) writeMessage(message interface{}) error {
 		return err
 	}
 
-	s.logger.WithComponent("mcp").Debug("Sent message", 
+	s.logger.WithComponent("mcp").Debug("Sent message",
 		zap.String("message", string(data)))
 
 	return nil
@@ -218,7 +218,7 @@ func (s *Server) writeMessage(message interface{}) error {
 
 func (s *Server) SendLogMessage(level string, message string, data map[string]interface{}) error {
 	logData, _ := json.Marshal(data)
-	
+
 	logMsg := types.LoggingMessage{
 		Level:  level,
 		Data:   json.RawMessage(logData),

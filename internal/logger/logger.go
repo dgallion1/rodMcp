@@ -18,9 +18,9 @@ type Logger struct {
 type Config struct {
 	LogLevel    string
 	LogDir      string
-	MaxSize     int  // megabytes
-	MaxBackups  int  // number of backups
-	MaxAge      int  // days
+	MaxSize     int // megabytes
+	MaxBackups  int // number of backups
+	MaxAge      int // days
 	Compress    bool
 	Development bool
 }
@@ -88,7 +88,7 @@ func New(config Config) (*Logger, error) {
 	consoleWriter := zapcore.AddSync(os.Stdout)
 	fileCore := zapcore.NewCore(encoder, zapcore.AddSync(fileWriter), level)
 	consoleCore := zapcore.NewCore(encoder, consoleWriter, level)
-	
+
 	core := zapcore.NewTee(fileCore, consoleCore)
 
 	// Create logger with caller info and stack traces

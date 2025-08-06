@@ -5,10 +5,11 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 ## 🌟 Highlights
 
 - 🤖 **Works with Claude** - Full MCP protocol support for seamless integration
-- 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless
+- 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless (browser visibility fixed!)
 - 🛠️ **6 Powerful Tools** - Create pages, navigate, screenshot, execute JS, visibility control, live preview
 - 🏠 **Easy Install** - No sudo required with local user installation
-- ⚡ **Go 1.24 Performance** - Fast, reliable browser automation
+- 🚀 **Auto Go Install** - Makefile can install Go locally if not present
+- ⚡ **Go 1.24.5+ Performance** - Fast, reliable browser automation
 
 ## 🛠️ Available Tools
 
@@ -62,21 +63,36 @@ git clone <repository-url>
 cd rodmcp
 ```
 
-### 2. Install (Choose One)
+### 2. Check Go Installation
+```bash
+make check-go
+```
+
+If Go is not installed, install it locally (no sudo required):
+```bash
+make install-go
+```
+
+### 3. Build & Install (Choose One)
 
 **🏠 Local Installation (Recommended - No sudo required):**
 ```bash
-./install-local.sh
+make install-local
 ```
 
 **🌍 System-Wide Installation:**
 ```bash
-./install.sh
+make install
+```
+
+**🛠️ Development Build:**
+```bash
+make build
 ```
 
 That's it! No additional configuration needed. Claude can dynamically control browser visibility.
 
-### 3. Test with Claude
+### 4. Test with Claude
 Ask Claude: *"What web development tools do you have available?"*
 
 Claude should respond with the 6 RodMCP tools listed above.
@@ -174,7 +190,27 @@ rodmcp/
 │   ├── mcp/            # MCP protocol implementation
 │   └── webtools/       # Web development tools
 ├── pkg/types/          # Shared type definitions
-└── examples/           # Usage examples
+├── examples/           # Usage examples
+├── configs/            # Configuration scripts
+├── bin/                # Built binaries and scripts
+└── Makefile           # Build and development automation
+```
+
+### Build Commands
+
+Use the Makefile for common development tasks:
+
+```bash
+make check-go        # Check Go installation status
+make install-go      # Install Go locally (no sudo)
+make build           # Build the binary
+make install         # Install system-wide
+make install-local   # Install to user bin (no sudo)
+make clean          # Clean build artifacts
+make test           # Run tests
+make demo           # Run demo
+make config-visible # Configure visible browser
+make config-headless # Configure headless browser
 ```
 
 ### Adding New Tools
@@ -209,15 +245,24 @@ RodMCP can run in two modes:
 ### 👀 Visible Browser Mode
 - **See Claude work in real-time**
 - Great for learning and debugging
-- Configure with: `./configs/setup-visible-browser-local.sh`
+- Configure with: `make config-visible`
 
 ### ⚡ Headless Mode  
 - **Faster execution, no GUI**
 - Better for automation and production
-- Configure with: `./configs/setup-headless-browser-local.sh`
+- Configure with: `make config-headless`
 
 ### Switch Anytime
-You can easily switch between modes - just run the appropriate setup script and restart Claude.
+You can easily switch between modes - just run `make config-visible` or `make config-headless` and restart Claude.
+
+### ⚠️ Important: Browser Visibility Fix
+If the browser window doesn't appear in visible mode, ensure you've built with the latest version that includes the browser visibility fix:
+
+```bash
+make clean && make build && make install-local
+```
+
+This fix resolves Chrome's `--no-startup-window` flag that was preventing the browser window from appearing.
 
 ## 📚 Documentation
 
@@ -228,11 +273,12 @@ You can easily switch between modes - just run the appropriate setup script and 
 
 ## 📋 System Requirements
 
-- **Go 1.24+** (for building from source)
+- **Go 1.24.5+** (can be installed locally with `make install-go`)
 - **Chrome/Chromium** (automatically downloaded by Rod on first use)
 - **Platform**: Linux, macOS, or Windows
 - **RAM**: 512MB+ recommended
-- **Disk**: ~100MB for Chrome download
+- **Disk**: ~100MB for Chrome download + ~150MB for Go (if installed locally)
+- **Network**: Required for Go and Chrome downloads
 
 ## 🤝 Contributing
 

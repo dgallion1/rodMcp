@@ -18,12 +18,12 @@ import (
 func main() {
 	// Parse command line flags
 	var (
-		logLevel    = flag.String("log-level", "info", "Log level (debug, info, warn, error)")
-		logDir      = flag.String("log-dir", "logs", "Log directory")
-		headless    = flag.Bool("headless", true, "Run browser in headless mode")
-		debug       = flag.Bool("debug", false, "Enable browser debug mode")
-		slowMotion  = flag.Duration("slow-motion", 0, "Slow motion delay between actions")
-		windowWidth = flag.Int("window-width", 1920, "Browser window width")
+		logLevel     = flag.String("log-level", "info", "Log level (debug, info, warn, error)")
+		logDir       = flag.String("log-dir", "logs", "Log directory")
+		headless     = flag.Bool("headless", false, "Run browser in headless mode")
+		debug        = flag.Bool("debug", false, "Enable browser debug mode")
+		slowMotion   = flag.Duration("slow-motion", 0, "Slow motion delay between actions")
+		windowWidth  = flag.Int("window-width", 1920, "Browser window width")
 		windowHeight = flag.Int("window-height", 1080, "Browser window height")
 	)
 	flag.Parse()
@@ -93,7 +93,7 @@ func main() {
 
 	// Send a log message to MCP client
 	mcpServer.SendLogMessage("info", "RodMCP server is ready for connections", map[string]interface{}{
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"timestamp":        time.Now().UTC().Format(time.RFC3339),
 		"tools_registered": 6,
 		"browser_config": map[string]interface{}{
 			"headless":      *headless,
