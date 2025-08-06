@@ -5,16 +5,31 @@ All notable changes to RodMCP will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-08-06
+
+### Added
+- **Runtime Visibility Control** - New `set_browser_visibility` MCP tool
+  - Claude can now dynamically switch between visible and headless modes
+  - Automatic browser restart with page restoration
+  - Seamless operation during active development sessions
+- **Enhanced Browser Manager** - Added `SetVisibility()` method with intelligent restart logic
+- **Adaptive Automation** - Enables context-aware visibility (visible for demos, headless for speed)
+
+### Changed
+- Updated tool count from 5 to 6 in documentation and startup logs
+- Enhanced browser manager to store configuration for runtime changes
+
 ## [1.0.0] - 2025-08-06
 
 ### Added
 - **Initial Release** - Complete MCP web development controller implementation
 - **MCP Protocol Support** - Full 2025-06-18 specification with JSON-RPC 2.0
-- **5 Web Development Tools**:
+- **6 Web Development Tools**:
   - `create_page` - Generate HTML pages with CSS and JavaScript
   - `navigate_page` - Browser navigation to URLs or local files  
   - `take_screenshot` - Capture page screenshots
   - `execute_script` - Run JavaScript code in browser
+  - `set_browser_visibility` - Runtime browser visibility control
   - `live_preview` - Local HTTP server for live development
 - **Rod Browser Integration** - Chrome/Chromium automation via Rod library
 - **Dual Installation Methods**:

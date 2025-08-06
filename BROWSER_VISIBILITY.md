@@ -167,6 +167,14 @@ Test my website's loading speed with the browser visible so I can see
 how the page renders and identify bottlenecks.
 ```
 
+### Adaptive Automation
+Ask Claude:
+```
+Create and test my website. Show me the browser during development so I 
+can see the progress, then switch to headless mode for the final testing 
+to speed things up.
+```
+
 ## 🔧 Switching Between Modes
 
 ### Quick Switch Scripts
@@ -181,16 +189,26 @@ how the page renders and identify bottlenecks.
 ./configs/setup-headless-browser.sh
 ```
 
-### Runtime Override
-You can also ask Claude to temporarily change modes:
+### Runtime Control (NEW!)
+Claude can now dynamically control browser visibility using the `set_browser_visibility` tool:
 
 ```
-"Use visible browser mode for this task so I can watch you work"
+"Show me the browser while you work on this task"
 ```
 
 ```
-"Use headless mode for faster execution"
+"Switch to headless mode for faster execution"
 ```
+
+```
+"Make the browser visible so I can see the animations, then switch back to headless"
+```
+
+**How it works:**
+- Claude automatically restarts the browser with new visibility settings
+- All open pages are preserved and restored after the change
+- No need to manually restart the MCP server
+- Works seamlessly during active development sessions
 
 ## 🐛 Troubleshooting
 

@@ -6,7 +6,7 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 
 - 🤖 **Works with Claude** - Full MCP protocol support for seamless integration
 - 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless
-- 🛠️ **5 Powerful Tools** - Create pages, navigate, screenshot, execute JS, live preview
+- 🛠️ **6 Powerful Tools** - Create pages, navigate, screenshot, execute JS, visibility control, live preview
 - 🏠 **Easy Install** - No sudo required with local user installation
 - ⚡ **Go 1.24 Performance** - Fast, reliable browser automation
 
@@ -33,6 +33,11 @@ Capture visual snapshots of web pages
 Run JavaScript code in browser pages
 - **Purpose**: Dynamic interaction and testing
 - **Example**: "Click all buttons and test form validation"
+
+### 👁️ `set_browser_visibility`
+Control browser visibility at runtime - switch between visible and headless modes
+- **Purpose**: Adaptive automation - visible for demos/debugging, headless for speed
+- **Example**: "Show me the browser while you work" or "Switch to headless for faster execution"
 
 ### 🚀 `live_preview`
 Start local development server with auto-reload

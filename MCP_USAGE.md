@@ -9,7 +9,7 @@ Ask Claude:
 What web development tools do you have available?
 ```
 
-Claude should respond with the 5 RodMCP tools.
+Claude should respond with the 6 RodMCP tools.
 
 ## Example Use Cases
 
@@ -93,6 +93,22 @@ Navigate to my project page and take screenshots of:
 - The projects gallery
 - The contact form
 - Save them with descriptive filenames
+```
+
+### set_browser_visibility
+```
+Show me the browser window while you create and test this webpage 
+so I can see exactly how the animations work.
+```
+
+```
+Switch to headless mode for faster execution while running 
+the automated test suite.
+```
+
+```
+I want to see the browser while you debug the CSS layout issues,
+then switch back to headless when you're done.
 ```
 
 ### live_preview

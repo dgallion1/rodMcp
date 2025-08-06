@@ -74,6 +74,7 @@ func main() {
 	mcpServer.RegisterTool(webtools.NewNavigatePageTool(log, browserMgr))
 	mcpServer.RegisterTool(webtools.NewScreenshotTool(log, browserMgr))
 	mcpServer.RegisterTool(webtools.NewExecuteScriptTool(log, browserMgr))
+	mcpServer.RegisterTool(webtools.NewBrowserVisibilityTool(log, browserMgr))
 	mcpServer.RegisterTool(webtools.NewLivePreviewTool(log))
 
 	// Handle graceful shutdown
@@ -93,7 +94,7 @@ func main() {
 	// Send a log message to MCP client
 	mcpServer.SendLogMessage("info", "RodMCP server is ready for connections", map[string]interface{}{
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
-		"tools_registered": 5,
+		"tools_registered": 6,
 		"browser_config": map[string]interface{}{
 			"headless":      *headless,
 			"debug":         *debug,

@@ -19,6 +19,7 @@ type Manager struct {
 	mutex    sync.RWMutex
 	ctx      context.Context
 	cancel   context.CancelFunc
+	config   Config
 }
 
 type Config struct {
@@ -43,6 +44,9 @@ func NewManager(log *logger.Logger, config Config) *Manager {
 func (m *Manager) Start(config Config) error {
 	m.logger.LogBrowserAction("starting", "", 0)
 	start := time.Now()
+
+	// Store config for potential restarts
+	m.config = config
 
 	// Configure launcher
 	l := launcher.New().
@@ -250,4 +254,82 @@ func (m *Manager) GetPageInfo(pageID string) (map[string]interface{}, error) {
 	}
 
 	return info, nil
+}
+
+func (m *Manager) SetVisibility(visible bool) error {
+	m.logger.LogBrowserAction("set_visibility", "", 0)
+	start := time.Now()
+
+	if m.browser == nil {
+		return fmt.Errorf("browser not started")
+	}
+
+	// Check if visibility is already as requested
+	if m.config.Headless == !visible {
+		mode := "headless"
+		if visible {
+			mode = "visible"
+		}
+		duration := time.Since(start).Milliseconds()
+		m.logger.LogBrowserAction("visibility_already_set", mode, duration)
+		return nil
+	}
+
+	// Store current page URLs to restore after restart
+	pageURLs := make(map[string]string)
+	m.mutex.RLock()
+	for id, page := range m.pages {
+		if pageInfo := page.MustInfo(); pageInfo != nil {
+			pageURLs[id] = pageInfo.URL
+		}
+	}
+	m.mutex.RUnlock()
+
+	// Update config
+	m.config.Headless = !visible
+
+	// Stop current browser
+	if err := m.Stop(); err != nil {
+		return fmt.Errorf("failed to stop browser for visibility change: %w", err)
+	}
+
+	// Create new context
+	m.ctx, m.cancel = context.WithCancel(context.Background())
+
+	// Start browser with new visibility setting
+	if err := m.Start(m.config); err != nil {
+		return fmt.Errorf("failed to restart browser with new visibility: %w", err)
+	}
+
+	// Restore pages
+	for oldID, url := range pageURLs {
+		if url != "" {
+			_, newID, err := m.NewPage(url)
+			if err != nil {
+				m.logger.WithComponent("browser").Warn("Failed to restore page after visibility change",
+					zap.String("old_page_id", oldID),
+					zap.String("url", url),
+					zap.Error(err))
+			} else {
+				m.logger.WithComponent("browser").Info("Restored page after visibility change",
+					zap.String("old_page_id", oldID),
+					zap.String("new_page_id", newID),
+					zap.String("url", url))
+			}
+		}
+	}
+
+	mode := "headless"
+	if visible {
+		mode = "visible"
+	}
+
+	duration := time.Since(start).Milliseconds()
+	m.logger.LogBrowserAction("visibility_changed", mode, duration)
+	
+	m.logger.WithComponent("browser").Info("Browser visibility changed successfully",
+		zap.String("mode", mode),
+		zap.Int("pages_restored", len(pageURLs)))
+
+	return nil
 }

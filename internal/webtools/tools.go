@@ -387,6 +387,96 @@ func (t *ExecuteScriptTool) Execute(args map[string]interface{}) (*types.CallToo
 	}, nil
 }
 
+// BrowserVisibilityTool controls browser visibility at runtime
+type BrowserVisibilityTool struct {
+	logger  *logger.Logger
+	browser *browser.Manager
+}
+
+func NewBrowserVisibilityTool(log *logger.Logger, browserMgr *browser.Manager) *BrowserVisibilityTool {
+	return &BrowserVisibilityTool{logger: log, browser: browserMgr}
+}
+
+func (t *BrowserVisibilityTool) Name() string {
+	return "set_browser_visibility"
+}
+
+func (t *BrowserVisibilityTool) Description() string {
+	return "Control browser visibility - switch between visible and headless modes at runtime"
+}
+
+func (t *BrowserVisibilityTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"visible": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Set to true to show browser window, false for headless mode",
+			},
+			"reason": map[string]interface{}{
+				"type":        "string",
+				"description": "Optional reason for visibility change (for logging)",
+			},
+		},
+		Required: []string{"visible"},
+	}
+}
+
+func (t *BrowserVisibilityTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Milliseconds()
+		t.logger.LogToolExecution(t.Name(), args, true, duration)
+	}()
+
+	visible, ok := args["visible"].(bool)
+	if !ok {
+		return nil, fmt.Errorf("visible parameter is required")
+	}
+
+	reason, _ := args["reason"].(string)
+	if reason == "" {
+		if visible {
+			reason = "MCP controller requested visible mode"
+		} else {
+			reason = "MCP controller requested headless mode"
+		}
+	}
+
+	// Update browser visibility
+	err := t.browser.SetVisibility(visible)
+	if err != nil {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Failed to change browser visibility: %v", err),
+			}},
+			IsError: true,
+		}, nil
+	}
+
+	mode := "headless"
+	if visible {
+		mode = "visible"
+	}
+
+	t.logger.WithComponent("webtools").Info("Browser visibility changed",
+		zap.String("mode", mode),
+		zap.String("reason", reason))
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("Browser set to %s mode. Reason: %s", mode, reason),
+			Data: map[string]interface{}{
+				"visible": visible,
+				"mode":    mode,
+				"reason":  reason,
+			},
+		}},
+	}, nil
+}
+
 // LivePreviewTool creates a simple HTTP server for live preview
 type LivePreviewTool struct {
 	logger *logger.Logger
