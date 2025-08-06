@@ -40,16 +40,18 @@ echo 'export PATH="$PATH:$HOME/.local/bin"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-### 3. Configure Browser Visibility
+### 3. Browser Visibility Control
 
-**Show browser window (watch Claude work):**
-```bash
-./configs/setup-visible-browser-local.sh
-```
+**No configuration needed!** Claude can dynamically control browser visibility using the `set_browser_visibility` tool.
 
-**Hide browser (faster, headless mode):**
+Just ask Claude:
+- "Show me the browser while you work"
+- "Switch to headless mode for faster execution"
+
+**Optional manual configuration:**
 ```bash
-./configs/setup-headless-browser-local.sh
+./configs/setup-visible-browser-local.sh    # Show browser
+./configs/setup-headless-browser-local.sh   # Hide browser
 ```
 
 ## File Locations

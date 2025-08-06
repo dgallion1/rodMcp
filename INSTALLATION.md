@@ -10,9 +10,8 @@ This guide shows how to install and configure RodMCP as an MCP (Model Context Pr
 # Install for current user only
 ./install-local.sh
 
-# Configure browser visibility
-./configs/setup-visible-browser-local.sh   # Show browser
-./configs/setup-headless-browser-local.sh  # Hide browser
+# Browser visibility is now dynamic - no configuration needed!
+# Just ask Claude: "Show me the browser" or "Switch to headless mode"
 ```
 
 This installs to `~/.local/bin` and doesn't require root access.
@@ -109,7 +108,16 @@ rodmcp [OPTIONS]
 
 ### Example Configurations
 
-**Development Mode (Visible Browser):**
+**Simple Default (Recommended):**
+```json
+{
+  "command": "rodmcp",
+  "args": ["--log-level=info"]
+}
+```
+*Claude can dynamically control browser visibility as needed using the `set_browser_visibility` tool.*
+
+**Development Mode (Always Visible):**
 ```json
 {
   "command": "rodmcp",
@@ -122,7 +130,7 @@ rodmcp [OPTIONS]
 }
 ```
 
-**Production Mode (Headless):**
+**Production Mode (Always Headless):**
 ```json
 {
   "command": "rodmcp",
@@ -161,7 +169,12 @@ Once installed, Claude will have access to these web development tools:
    Parameters: page_id?, script
    ```
 
-5. **`live_preview`** - Start local development server
+5. **`set_browser_visibility`** - Control browser visibility at runtime
+   ```
+   Parameters: visible (boolean), reason?
+   ```
+
+6. **`live_preview`** - Start local development server
    ```
    Parameters: directory?, port?
    ```
@@ -172,7 +185,7 @@ Once installed, Claude will have access to these web development tools:
 
 1. **Start Claude with MCP support**
 2. **Ask Claude:** "What web development tools do you have available?"
-3. **Claude should respond** with the 5 RodMCP tools listed above
+3. **Claude should respond** with the 6 RodMCP tools listed above
 
 ### Test Functionality
 

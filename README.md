@@ -67,19 +67,19 @@ cd rodmcp
 **🏠 Local Installation (Recommended - No sudo required):**
 ```bash
 ./install-local.sh
-./configs/setup-visible-browser-local.sh  # To watch Claude work
 ```
 
 **🌍 System-Wide Installation:**
 ```bash
 ./install.sh
-./configs/setup-visible-browser.sh  # To watch Claude work
 ```
+
+That's it! No additional configuration needed. Claude can dynamically control browser visibility.
 
 ### 3. Test with Claude
 Ask Claude: *"What web development tools do you have available?"*
 
-Claude should respond with the 5 RodMCP tools listed above.
+Claude should respond with the 6 RodMCP tools listed above.
 
 ## 💡 Example Use Cases
 

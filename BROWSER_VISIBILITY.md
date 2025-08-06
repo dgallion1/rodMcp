@@ -2,6 +2,8 @@
 
 Control whether Claude shows the browser window when working on web development tasks.
 
+**NEW: Claude can now dynamically control visibility!** No manual configuration required - just ask Claude to show or hide the browser as needed.
+
 ## 🖥️ Show Browser Window (Visible Mode)
 
 **Benefits:**
@@ -177,7 +179,13 @@ to speed things up.
 
 ## 🔧 Switching Between Modes
 
-### Quick Switch Scripts
+### Dynamic Control (Recommended)
+Just ask Claude directly:
+- "Show me the browser while you work"
+- "Switch to headless mode for faster execution"  
+- "Make the browser visible so I can see the animations"
+
+### Manual Configuration (Optional)
 
 **Enable Visible Mode:**
 ```bash
