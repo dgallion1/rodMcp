@@ -1,6 +1,6 @@
 module rodmcp
 
-go 1.24
+go 1.24.5
 
 require (
 	github.com/go-rod/rod v0.116.2

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"rodmcp/internal/logger"
+	"strings"
 	"sync"
 	"time"
 
@@ -229,7 +230,49 @@ func (m *Manager) ExecuteScript(pageID string, script string) (interface{}, erro
 		return nil, err
 	}
 
-	result, err := page.Eval(script)
+	// Clean up the script
+	script = strings.TrimSpace(script)
+	
+	// go-rod's page.Eval expects JavaScript wrapped as arrow functions
+	// Key insight: page.Eval works with "() => expression" or "() => { statements; return value; }"
+	
+	lines := strings.Split(script, "\n")
+	hasObjectLiteral := false
+	
+	// Check if script contains object literal expressions that should be returned
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "({") {
+			hasObjectLiteral = true
+			break
+		}
+	}
+	
+	var wrappedScript string
+	
+	if hasObjectLiteral {
+		// Script has object literal - wrap in arrow function with return
+		for i, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "({") {
+				lines[i] = strings.Replace(line, "({", "return ({", 1)
+				break
+			}
+		}
+		wrappedScript = fmt.Sprintf("() => {\n%s\n}", strings.Join(lines, "\n"))
+	} else {
+		// No object literal - check if it's a simple expression or needs statement wrapper
+		if len(lines) == 1 && !strings.Contains(script, "=") && !strings.Contains(script, ";") {
+			// Single expression, wrap as arrow function expression
+			wrappedScript = fmt.Sprintf("() => %s", script)
+		} else {
+			// Multiple statements, wrap in arrow function block
+			wrappedScript = fmt.Sprintf("() => {\n%s\n}", script)
+		}
+	}
+
+	// Execute the script using page.Eval
+	result, err := page.Eval(wrappedScript)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute script: %w", err)
 	}
@@ -238,6 +281,28 @@ func (m *Manager) ExecuteScript(pageID string, script string) (interface{}, erro
 	m.logger.LogBrowserAction("script_executed", pageID, duration)
 
 	return result.Value, nil
+}
+
+func (m *Manager) NavigateExistingPage(pageID string, url string) error {
+	start := time.Now()
+
+	page, err := m.GetPage(pageID)
+	if err != nil {
+		return err
+	}
+
+	if err := page.Navigate(url); err != nil {
+		return fmt.Errorf("failed to navigate to %s: %w", url, err)
+	}
+
+	if err := page.WaitLoad(); err != nil {
+		return fmt.Errorf("failed to wait for page load: %w", err)
+	}
+
+	duration := time.Since(start).Milliseconds()
+	m.logger.LogBrowserAction("page_navigated", url, duration)
+
+	return nil
 }
 
 func (m *Manager) GetPageInfo(pageID string) (map[string]interface{}, error) {

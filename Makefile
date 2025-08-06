@@ -7,24 +7,39 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Go configuration
-GO_VERSION_REQUIRED := 1.24.5
+GO_VERSION_REQUIRED := 1.21.0
 LOCAL_GO_DIR := $(HOME)/.local/go
 LOCAL_GO_BIN := $(LOCAL_GO_DIR)/bin/go
 SYSTEM_GO_BIN := $(shell which go 2>/dev/null)
 GO_VERSION_LATEST := $(shell curl -s https://go.dev/VERSION?m=text 2>/dev/null | head -1 | sed 's/go//' || echo "1.24.5")
+
+# Function to check if Go version meets minimum requirement
+define check_go_version
+$(shell \
+  if [ -z "$(1)" ]; then \
+    echo "false"; \
+  else \
+    current=$$(echo "$(1)" | sed 's/go//'); \
+    required="$(GO_VERSION_REQUIRED)"; \
+    printf '%s\n%s\n' "$$current" "$$required" | sort -V | head -1 | grep -q "$$required" && echo "true" || echo "false"; \
+  fi)
+endef
 
 # Determine which Go to use
 ifeq ($(SYSTEM_GO_BIN),)
     ifeq ($(shell test -x $(LOCAL_GO_BIN) && echo "yes"),yes)
         GO_BIN := $(LOCAL_GO_BIN)
         GO_VERSION := $(shell $(LOCAL_GO_BIN) version | cut -d' ' -f3)
+        GO_VERSION_OK := $(call check_go_version,$(GO_VERSION))
     else
         GO_BIN := 
         GO_VERSION := not-installed
+        GO_VERSION_OK := false
     endif
 else
     GO_BIN := $(SYSTEM_GO_BIN)
     GO_VERSION := $(shell $(SYSTEM_GO_BIN) version | cut -d' ' -f3)
+    GO_VERSION_OK := $(call check_go_version,$(GO_VERSION))
 endif
 
 # Build configuration
@@ -136,19 +151,28 @@ check-go:
 		echo "  Location:   $(GO_BIN)"; \
 		echo "  Version:    $(GO_VERSION)"; \
 		echo "  Required:   Go $(GO_VERSION_REQUIRED)+"; \
+		if [ "$(GO_VERSION_OK)" = "true" ]; then \
+			echo "  Compatible: $(GREEN)Yes$(NC)"; \
+		else \
+			echo "  Compatible: $(RED)No (version too old)$(NC)"; \
+		fi; \
 	fi
 
 ## Install-go - Install Go locally (no sudo required)
 install-go:
-	@if [ -n "$(SYSTEM_GO_BIN)" ]; then \
-		echo "$(YELLOW)Go is already installed system-wide at $(SYSTEM_GO_BIN)$(NC)"; \
-		echo "$(CYAN)Current version: $(GO_VERSION)$(NC)"; \
+	@if [ -n "$(SYSTEM_GO_BIN)" ] && [ "$(GO_VERSION_OK)" = "true" ]; then \
+		echo "$(GREEN)Go is already installed system-wide at $(SYSTEM_GO_BIN)$(NC)"; \
+		echo "$(CYAN)Current version: $(GO_VERSION) (meets requirement)$(NC)"; \
 		exit 0; \
 	fi
-	@if [ -x "$(LOCAL_GO_BIN)" ]; then \
-		echo "$(YELLOW)Go is already installed locally at $(LOCAL_GO_BIN)$(NC)"; \
-		echo "$(CYAN)Current version: $$($(LOCAL_GO_BIN) version | cut -d' ' -f3)$(NC)"; \
+	@if [ -x "$(LOCAL_GO_BIN)" ] && [ "$(GO_VERSION_OK)" = "true" ]; then \
+		echo "$(GREEN)Go is already installed locally at $(LOCAL_GO_BIN)$(NC)"; \
+		echo "$(CYAN)Current version: $(GO_VERSION) (meets requirement)$(NC)"; \
 		exit 0; \
+	fi
+	@if [ -n "$(GO_BIN)" ] && [ "$(GO_VERSION_OK)" = "false" ]; then \
+		echo "$(YELLOW)Existing Go version $(GO_VERSION) is older than required $(GO_VERSION_REQUIRED)$(NC)"; \
+		echo "$(BLUE)Installing newer version locally...$(NC)"; \
 	fi
 	@echo "$(BLUE)Installing Go $(GO_VERSION_LATEST) locally...$(NC)"
 	@echo "  Architecture: $(GO_OS)-$(GO_ARCH)"
@@ -175,7 +199,7 @@ build: check-go-available
 	$(GO_BIN) build $(BUILD_FLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PACKAGE)
 	@echo "$(GREEN)✓ Build complete: $(BUILD_DIR)/$(BINARY_NAME)$(NC)"
 
-# Internal target to check if Go is available
+# Internal target to check if Go is available and compatible
 check-go-available:
 	@if [ -z "$(GO_BIN)" ]; then \
 		echo "$(RED)✗ Go is not installed$(NC)"; \
@@ -183,6 +207,15 @@ check-go-available:
 		echo "$(YELLOW)Install Go using one of these methods:$(NC)"; \
 		echo "  1. $(CYAN)make install-go$(NC)     - Install Go locally (no sudo)"; \
 		echo "  2. Install Go system-wide from https://golang.org/dl/"; \
+		echo ""; \
+		exit 1; \
+	elif [ "$(GO_VERSION_OK)" = "false" ]; then \
+		echo "$(RED)✗ Go version $(GO_VERSION) is too old$(NC)"; \
+		echo "$(YELLOW)Minimum required: Go $(GO_VERSION_REQUIRED)$(NC)"; \
+		echo ""; \
+		echo "$(YELLOW)Update Go using one of these methods:$(NC)"; \
+		echo "  1. $(CYAN)make install-go$(NC)     - Install newer Go locally (no sudo)"; \
+		echo "  2. Update Go system-wide from https://golang.org/dl/"; \
 		echo ""; \
 		exit 1; \
 	fi
@@ -204,6 +237,13 @@ test: check-go-available
 	@echo "$(BLUE)Running tests...$(NC)"
 	$(GO_BIN) test -v ./...
 	@echo "$(GREEN)✓ Tests complete$(NC)"
+
+## Test Comprehensive - Run comprehensive test suite for all MCP tools
+test-comprehensive: check-go-available
+	@echo "$(BLUE)Running comprehensive MCP test suite...$(NC)"
+	@echo "Testing all 18 MCP tools across 5 categories"
+	$(GO_BIN) run comprehensive_suite.go
+	@echo "$(GREEN)✓ Comprehensive test suite complete$(NC)"
 
 ## Install - Install system-wide (requires sudo)
 install: build

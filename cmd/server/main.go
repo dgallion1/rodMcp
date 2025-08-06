@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"rodmcp/internal/browser"
@@ -34,6 +35,9 @@ func main() {
 			return
 		case "schema":
 			exportSchema()
+			return
+		case "http":
+			startHTTPServer()
 			return
 		case "help", "-h", "--help":
 			showHelp()
@@ -157,6 +161,129 @@ func main() {
 	log.Info("Shutting down RodMCP server")
 }
 
+func startHTTPServer() {
+	// Parse HTTP-specific flags
+	var (
+		port         = flag.Int("port", 8080, "HTTP server port")
+		logLevel     = flag.String("log-level", "info", "Log level (debug, info, warn, error)")
+		logDir       = flag.String("log-dir", "logs", "Log directory")
+		headless     = flag.Bool("headless", true, "Run browser in headless mode (default for HTTP)")
+		debug        = flag.Bool("debug", false, "Enable browser debug mode")
+		slowMotion   = flag.Duration("slow-motion", 0, "Slow motion delay between actions")
+		windowWidth  = flag.Int("window-width", 1920, "Browser window width")
+		windowHeight = flag.Int("window-height", 1080, "Browser window height")
+	)
+	flag.CommandLine.Parse(os.Args[2:]) // Skip "rodmcp http"
+
+	// Initialize logger
+	logConfig := logger.Config{
+		LogLevel:    *logLevel,
+		LogDir:      *logDir,
+		MaxSize:     100, // 100MB
+		MaxBackups:  5,
+		MaxAge:      30, // 30 days
+		Compress:    true,
+		Development: *debug,
+	}
+
+	log, err := logger.New(logConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer log.Sync()
+
+	log.Info("Starting RodMCP HTTP server",
+		zap.Int("port", *port),
+		zap.String("log_level", *logLevel),
+		zap.Bool("headless", *headless))
+
+	// Initialize browser manager
+	browserConfig := browser.Config{
+		Headless:     *headless,
+		Debug:        *debug,
+		SlowMotion:   *slowMotion,
+		WindowWidth:  *windowWidth,
+		WindowHeight: *windowHeight,
+	}
+
+	browserMgr := browser.NewManager(log, browserConfig)
+	if err := browserMgr.Start(browserConfig); err != nil {
+		log.Fatal("Failed to start browser manager", zap.Error(err))
+	}
+	defer browserMgr.Stop()
+
+	// Initialize HTTP MCP server
+	httpServer := mcp.NewHTTPServer(log, *port)
+
+	// Register web development tools
+	httpServer.RegisterTool(webtools.NewCreatePageTool(log))
+	httpServer.RegisterTool(webtools.NewNavigatePageTool(log, browserMgr))
+	httpServer.RegisterTool(webtools.NewScreenshotTool(log, browserMgr))
+	httpServer.RegisterTool(webtools.NewExecuteScriptTool(log, browserMgr))
+	httpServer.RegisterTool(webtools.NewBrowserVisibilityTool(log, browserMgr))
+	httpServer.RegisterTool(webtools.NewLivePreviewTool(log))
+	
+	// Browser UI control tools
+	httpServer.RegisterTool(webtools.NewClickElementTool(log, browserMgr))
+	httpServer.RegisterTool(webtools.NewTypeTextTool(log, browserMgr))
+	httpServer.RegisterTool(webtools.NewWaitTool(log))
+	httpServer.RegisterTool(webtools.NewWaitForElementTool(log, browserMgr))
+	httpServer.RegisterTool(webtools.NewGetElementTextTool(log, browserMgr))
+	httpServer.RegisterTool(webtools.NewGetElementAttributeTool(log, browserMgr))
+	httpServer.RegisterTool(webtools.NewScrollTool(log, browserMgr))
+	httpServer.RegisterTool(webtools.NewHoverElementTool(log, browserMgr))
+	
+	// File system tools
+	httpServer.RegisterTool(webtools.NewReadFileTool(log))
+	httpServer.RegisterTool(webtools.NewWriteFileTool(log))
+	httpServer.RegisterTool(webtools.NewListDirectoryTool(log))
+	
+	// Network tools
+	httpServer.RegisterTool(webtools.NewHTTPRequestTool(log))
+
+	// Handle graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start HTTP server in a goroutine
+	errChan := make(chan error, 1)
+	go func() {
+		if err := httpServer.Start(); err != nil && err != http.ErrServerClosed {
+			errChan <- err
+		}
+	}()
+
+	log.Info("RodMCP HTTP server started successfully",
+		zap.String("url", fmt.Sprintf("http://localhost:%d", *port)))
+
+	// Send a log message
+	httpServer.SendLogMessage("info", "RodMCP HTTP server is ready for connections", map[string]interface{}{
+		"timestamp":        time.Now().UTC().Format(time.RFC3339),
+		"port":            *port,
+		"tools_registered": 18,
+		"browser_config": map[string]interface{}{
+			"headless":      *headless,
+			"debug":         *debug,
+			"window_width":  *windowWidth,
+			"window_height": *windowHeight,
+		},
+	})
+
+	// Wait for shutdown signal or error
+	select {
+	case sig := <-sigChan:
+		log.Info("Received shutdown signal", zap.String("signal", sig.String()))
+	case err := <-errChan:
+		log.Error("HTTP server error", zap.Error(err))
+	}
+
+	log.Info("Shutting down RodMCP HTTP server")
+	if err := httpServer.Stop(); err != nil {
+		log.Error("Error stopping HTTP server", zap.Error(err))
+	}
+}
+
 // Helper function to get all registered tools
 func getAllTools() map[string]mcp.Tool {
 	// Create a temporary logger just for tool registration
@@ -226,12 +353,13 @@ USAGE:
 
 COMMANDS:
     (no command)       Start MCP server (default)
+    http              Start HTTP-based MCP server
     list-tools, tools  List all available MCP tools
     describe-tool NAME Show detailed documentation for a specific tool
     schema            Export complete MCP tool schema as JSON
     help              Show this help message
 
-SERVER FLAGS:
+SERVER FLAGS (for default MCP server):
     --headless            Run browser in headless mode (default: false)
     --debug               Enable browser debug mode (default: false)
     --log-level LEVEL     Log level: debug, info, warn, error (default: info)
@@ -240,15 +368,27 @@ SERVER FLAGS:
     --window-width WIDTH  Browser window width (default: 1920)
     --window-height HEIGHT Browser window height (default: 1080)
 
+HTTP SERVER FLAGS (for 'rodmcp http'):
+    --port PORT           HTTP server port (default: 8080)
+    --headless            Run browser in headless mode (default: true for HTTP)
+    --debug               Enable browser debug mode (default: false)
+    --log-level LEVEL     Log level: debug, info, warn, error (default: info)
+    --log-dir DIR         Log directory (default: logs)
+    --slow-motion DURATION Slow motion delay between actions
+    --window-width WIDTH  Browser window width (default: 1920)
+    --window-height HEIGHT Browser window height (default: 1080)
+
 EXAMPLES:
-    %s                    # Start MCP server
-    %s list-tools         # Show all available tools
+    %s                    # Start stdio MCP server
+    %s http              # Start HTTP MCP server on port 8080
+    %s http --port 3000  # Start HTTP MCP server on port 3000
+    %s list-tools        # Show all available tools
     %s describe-tool click_element  # Show tool documentation
     %s schema            # Export tool definitions
-    %s --headless        # Start server in headless mode
+    %s --headless        # Start stdio server in headless mode
 
 For more information, see: https://github.com/your-org/rodmcp
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
 
 func listTools() {

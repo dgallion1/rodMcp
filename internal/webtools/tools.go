@@ -185,23 +185,49 @@ func (t *NavigatePageTool) Execute(args map[string]interface{}) (*types.CallTool
 		}
 	}
 
-	page, pageID, err := t.browser.NewPage(url)
-	if err != nil {
-		return &types.CallToolResponse{
-			Content: []types.ToolContent{{
-				Type: "text",
-				Text: fmt.Sprintf("Failed to navigate: %v", err),
-			}},
-			IsError: true,
-		}, nil
+	// Check if there are existing pages, if so navigate the first one instead of creating new
+	pages := t.browser.ListPages()
+	var pageID string
+	
+	if len(pages) > 0 {
+		// Use existing page and navigate it to new URL
+		pageID = pages[0]
+		if err := t.browser.NavigateExistingPage(pageID, url); err != nil {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: fmt.Sprintf("Failed to navigate to %s: %v", url, err),
+				}},
+				IsError: true,
+			}, nil
+		}
+	} else {
+		// Create new page if none exist
+		_, newPageID, err := t.browser.NewPage(url)
+		if err != nil {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: fmt.Sprintf("Failed to navigate: %v", err),
+				}},
+				IsError: true,
+			}, nil
+		}
+		pageID = newPageID
 	}
 
 	info, _ := t.browser.GetPageInfo(pageID)
+	currentURL := "unknown"
+	if info != nil {
+		if u, ok := info["url"].(string); ok {
+			currentURL = u
+		}
+	}
 
 	return &types.CallToolResponse{
 		Content: []types.ToolContent{{
 			Type: "text",
-			Text: fmt.Sprintf("Navigated to %s (Page ID: %s)", page.MustInfo().URL, pageID),
+			Text: fmt.Sprintf("Navigated to %s (Page ID: %s)", currentURL, pageID),
 			Data: info,
 		}},
 	}, nil
@@ -1091,13 +1117,20 @@ func (t *ClickElementTool) Execute(args map[string]interface{}) (*types.CallTool
 		// timeout = int(val) // for future use
 	}
 
-	// Get the page
-	var page *browser.Manager
-	if pageID != "" {
-		// Use specific page (this would need to be implemented in browser manager)
-		page = t.browserMgr
-	} else {
-		page = t.browserMgr
+	// Get the page ID to use
+	if pageID == "" {
+		// Use first available page if no specific page ID provided
+		pages := t.browserMgr.ListPages()
+		if len(pages) == 0 {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: "No pages available for element interaction",
+				}},
+				IsError: true,
+			}, nil
+		}
+		pageID = pages[0]
 	}
 
 	// For now, use execute_script as the underlying mechanism until we have direct Rod access
@@ -1110,7 +1143,7 @@ func (t *ClickElementTool) Execute(args map[string]interface{}) (*types.CallTool
 		return 'Clicked element: ' + '%s';
 	`, selector, selector, selector)
 
-	result, err := page.ExecuteScript("", script)
+	result, err := t.browserMgr.ExecuteScript(pageID, script)
 	if err != nil {
 		t.logger.WithComponent("tools").Error("Failed to click element",
 			zap.String("selector", selector),
@@ -1198,6 +1231,22 @@ func (t *TypeTextTool) Execute(args map[string]interface{}) (*types.CallToolResp
 	if val, ok := args["page_id"].(string); ok {
 		pageID = val
 	}
+	
+	// Get the page ID to use
+	if pageID == "" {
+		// Use first available page if no specific page ID provided
+		pages := t.browserMgr.ListPages()
+		if len(pages) == 0 {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: "No pages available for text input",
+				}},
+				IsError: true,
+			}, nil
+		}
+		pageID = pages[0]
+	}
 
 	clear := true
 	if val, ok := args["clear"].(bool); ok {
@@ -1227,7 +1276,7 @@ func (t *TypeTextTool) Execute(args map[string]interface{}) (*types.CallToolResp
 		return 'Typed text into: %s';
 	`, selector, selector, clearScript, escapedText, selector)
 
-	result, err := t.browserMgr.ExecuteScript("", script)
+	result, err := t.browserMgr.ExecuteScript(pageID, script)
 	if err != nil {
 		t.logger.WithComponent("tools").Error("Failed to type text",
 			zap.String("selector", selector),
@@ -1375,6 +1424,22 @@ func (t *WaitForElementTool) Execute(args map[string]interface{}) (*types.CallTo
 	if val, ok := args["page_id"].(string); ok {
 		pageID = val
 	}
+	
+	// Get the page ID to use
+	if pageID == "" {
+		// Use first available page if no specific page ID provided
+		pages := t.browserMgr.ListPages()
+		if len(pages) == 0 {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: "No pages available for waiting for element",
+				}},
+				IsError: true,
+			}, nil
+		}
+		pageID = pages[0]
+	}
 
 	timeout := 10
 	if val, ok := args["timeout"].(float64); ok {
@@ -1411,7 +1476,7 @@ func (t *WaitForElementTool) Execute(args map[string]interface{}) (*types.CallTo
 		return checkElement();
 	`, timeout, selector, selector, selector)
 
-	result, err := t.browserMgr.ExecuteScript("", script)
+	result, err := t.browserMgr.ExecuteScript(pageID, script)
 	if err != nil {
 		t.logger.WithComponent("tools").Error("Failed to wait for element",
 			zap.String("selector", selector),
@@ -1488,6 +1553,22 @@ func (t *GetElementTextTool) Execute(args map[string]interface{}) (*types.CallTo
 	if val, ok := args["page_id"].(string); ok {
 		pageID = val
 	}
+	
+	// Get the page ID to use
+	if pageID == "" {
+		// Use first available page if no specific page ID provided
+		pages := t.browserMgr.ListPages()
+		if len(pages) == 0 {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: "No pages available for getting element text",
+				}},
+				IsError: true,
+			}, nil
+		}
+		pageID = pages[0]
+	}
 
 	script := fmt.Sprintf(`
 		const element = document.querySelector('%s');
@@ -1497,7 +1578,7 @@ func (t *GetElementTextTool) Execute(args map[string]interface{}) (*types.CallTo
 		return element.textContent || element.innerText || '';
 	`, selector, selector)
 
-	result, err := t.browserMgr.ExecuteScript("", script)
+	result, err := t.browserMgr.ExecuteScript(pageID, script)
 	if err != nil {
 		t.logger.WithComponent("tools").Error("Failed to get element text",
 			zap.String("selector", selector),
@@ -1508,6 +1589,9 @@ func (t *GetElementTextTool) Execute(args map[string]interface{}) (*types.CallTo
 	text := ""
 	if resultStr, ok := result.(string); ok {
 		text = resultStr
+	} else {
+		// Handle non-string results (e.g., gson.JSON from go-rod)
+		text = fmt.Sprintf("%v", result)
 	}
 
 	duration := time.Since(start).Milliseconds()
@@ -1586,6 +1670,22 @@ func (t *GetElementAttributeTool) Execute(args map[string]interface{}) (*types.C
 	if val, ok := args["page_id"].(string); ok {
 		pageID = val
 	}
+	
+	// Get the page ID to use
+	if pageID == "" {
+		// Use first available page if no specific page ID provided
+		pages := t.browserMgr.ListPages()
+		if len(pages) == 0 {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: "No pages available for getting element attribute",
+				}},
+				IsError: true,
+			}, nil
+		}
+		pageID = pages[0]
+	}
 
 	script := fmt.Sprintf(`
 		const element = document.querySelector('%s');
@@ -1595,7 +1695,7 @@ func (t *GetElementAttributeTool) Execute(args map[string]interface{}) (*types.C
 		return element.getAttribute('%s');
 	`, selector, selector, attribute)
 
-	result, err := t.browserMgr.ExecuteScript("", script)
+	result, err := t.browserMgr.ExecuteScript(pageID, script)
 	if err != nil {
 		t.logger.WithComponent("tools").Error("Failed to get element attribute",
 			zap.String("selector", selector),
@@ -1607,6 +1707,9 @@ func (t *GetElementAttributeTool) Execute(args map[string]interface{}) (*types.C
 	value := ""
 	if resultStr, ok := result.(string); ok {
 		value = resultStr
+	} else {
+		// Handle non-string results (e.g., gson.JSON from go-rod)
+		value = fmt.Sprintf("%v", result)
 	}
 
 	duration := time.Since(start).Milliseconds()
@@ -1696,6 +1799,22 @@ func (t *ScrollTool) Execute(args map[string]interface{}) (*types.CallToolRespon
 	if val, ok := args["page_id"].(string); ok {
 		pageID = val
 	}
+	
+	// Get the page ID to use
+	if pageID == "" {
+		// Use first available page if no specific page ID provided
+		pages := t.browserMgr.ListPages()
+		if len(pages) == 0 {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: "No pages available for scrolling",
+				}},
+				IsError: true,
+			}, nil
+		}
+		pageID = pages[0]
+	}
 
 	var script string
 	var description string
@@ -1722,7 +1841,7 @@ func (t *ScrollTool) Execute(args map[string]interface{}) (*types.CallToolRespon
 		return nil, fmt.Errorf("must specify either selector or x/y coordinates")
 	}
 
-	result, err := t.browserMgr.ExecuteScript("", script)
+	result, err := t.browserMgr.ExecuteScript(pageID, script)
 	if err != nil {
 		t.logger.WithComponent("tools").Error("Failed to scroll",
 			zap.String("selector", selector),
@@ -1802,6 +1921,22 @@ func (t *HoverElementTool) Execute(args map[string]interface{}) (*types.CallTool
 	if val, ok := args["page_id"].(string); ok {
 		pageID = val
 	}
+	
+	// Get the page ID to use
+	if pageID == "" {
+		// Use first available page if no specific page ID provided
+		pages := t.browserMgr.ListPages()
+		if len(pages) == 0 {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: "No pages available for hovering over element",
+				}},
+				IsError: true,
+			}, nil
+		}
+		pageID = pages[0]
+	}
 
 	script := fmt.Sprintf(`
 		const element = document.querySelector('%s');
@@ -1828,7 +1963,7 @@ func (t *HoverElementTool) Execute(args map[string]interface{}) (*types.CallTool
 		return 'Hovered over element: %s';
 	`, selector, selector, selector)
 
-	result, err := t.browserMgr.ExecuteScript("", script)
+	result, err := t.browserMgr.ExecuteScript(pageID, script)
 	if err != nil {
 		t.logger.WithComponent("tools").Error("Failed to hover over element",
 			zap.String("selector", selector),

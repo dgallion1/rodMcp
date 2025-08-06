@@ -5,14 +5,40 @@ All notable changes to RodMCP will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2025-08-06
+## [Unreleased]
 
 ### Added
+- **Comprehensive Test Suite** - Complete validation of all 18 MCP tools
+  - 25 automated tests covering 5 categories: File System, Browser Automation, UI Control, Network, JavaScript
+  - 100% success rate with detailed performance metrics
+  - Interactive HTML test page with form interactions and dynamic content  
+  - Automated validation of element text extraction, attribute reading, HTTP responses, and JavaScript execution
+  - `make test-comprehensive` command for running complete test suite
+
+### Fixed
+- **Element text/attribute extraction returning empty results**
+  - Root cause: `ExecuteScript` returns `gson.JSON` type instead of expected `string` 
+  - Solution: Added robust type handling with fallback for non-string results
+  - Now correctly extracts element text content and attribute values
+
+- **HTTP POST JSON body not being sent properly**  
+  - Root cause: Test using `"body"` parameter instead of `"json"` parameter
+  - Solution: Updated to use `"json"` parameter for automatic JSON marshaling
+  - JSON POST data now correctly transmitted and received
+
+### Improved
+- Enhanced documentation with comprehensive test coverage details
+- Cleaned up debug logging while preserving functionality
+- Better error messages and validation in test framework
+
+## [1.1.0] - 2025-08-06
+
+### Added  
 - **Runtime Visibility Control** - New `set_browser_visibility` MCP tool
   - Claude can now dynamically switch between visible and headless modes
   - Automatic browser restart with page restoration
   - Seamless operation during active development sessions
-- **Enhanced Browser Manager** - Added `SetVisibility()` method with intelligent restart logic
+- **Enhanced Browser Manager** - Added `SetVisibility()` method with intelligent restart logic  
 - **Adaptive Automation** - Enables context-aware visibility (visible for demos, headless for speed)
 
 ### Changed
