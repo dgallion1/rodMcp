@@ -153,12 +153,12 @@ make install-go
 
 **🏠 Local Installation (Recommended - No sudo required):**
 ```bash
-make install-local
+make install-local  # Automatically stops existing processes
 ```
 
 **🌍 System-Wide Installation:**
 ```bash
-make install
+make install  # Automatically stops existing processes (requires sudo)
 ```
 
 **🛠️ Development Build:**
@@ -465,8 +465,9 @@ Use the Makefile for common development tasks:
 make check-go        # Check Go installation status
 make install-go      # Install Go locally (no sudo)
 make build           # Build the binary
-make install         # Install system-wide
-make install-local   # Install to user bin (no sudo)
+make install         # Install system-wide (auto-stops processes)
+make install-local   # Install to user bin (auto-stops processes, no sudo)
+make stop-processes  # Stop all running rodmcp processes
 make clean          # Clean build artifacts
 make test           # Run tests
 make test-comprehensive # Run comprehensive test suite
@@ -560,6 +561,10 @@ The most common issue is using the problematic `rodmcp-manager` script instead o
 
 3. **Clean up any conflicting processes:**
    ```bash
+   # Use the built-in process stopping (recommended)
+   make stop-processes
+   
+   # Or manual cleanup
    pkill -f "rodmcp.*http" || echo "No conflicting processes found"
    rm -f /tmp/rodmcp-http-manager.*
    ```
@@ -581,7 +586,7 @@ The most common issue is using the problematic `rodmcp-manager` script instead o
    ```bash
    cd /path/to/rodmcp
    git pull origin master
-   make install-local
+   make install-local  # Automatically stops existing processes
    ```
 
 2. **Check Service Health:**

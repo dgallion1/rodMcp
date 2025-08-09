@@ -96,7 +96,34 @@ MAGENTA := \033[0;35m
 CYAN := \033[0;36m
 NC := \033[0m # No Color
 
-.PHONY: help build clean test install install-local uninstall demo config-visible config-headless dev check fmt lint vet deps update-deps install-go check-go
+# Process management functions
+define stop_existing_processes
+	@echo "$(YELLOW)Stopping existing rodmcp processes...$(NC)"; \
+	PIDS=$$(pgrep -f "rodmcp" 2>/dev/null | grep -v $$$$ || true); \
+	if [ -n "$$PIDS" ]; then \
+		echo "  Found running processes: $$PIDS"; \
+		for pid in $$PIDS; do \
+			if kill -0 $$pid 2>/dev/null; then \
+				CMDLINE=$$(ps -p $$pid -o args= 2>/dev/null || true); \
+				if echo "$$CMDLINE" | grep -q "rodmcp" && ! echo "$$CMDLINE" | grep -q "make" && [ "$$pid" != "$$$$" ]; then \
+					echo "  Stopping process $$pid: $$CMDLINE"; \
+					kill -TERM $$pid 2>/dev/null || true; \
+					sleep 1; \
+					if kill -0 $$pid 2>/dev/null; then \
+						echo "  Force killing process $$pid..."; \
+						kill -KILL $$pid 2>/dev/null || true; \
+					fi; \
+				fi; \
+			fi; \
+		done; \
+		echo "$(GREEN)✓ Existing processes stopped$(NC)"; \
+	else \
+		echo "  No existing processes found"; \
+	fi; \
+	rm -f /tmp/rodmcp-http-manager.* 2>/dev/null || true
+endef
+
+.PHONY: help build clean test install install-local uninstall demo config-visible config-headless dev check fmt lint vet deps update-deps install-go check-go stop-processes
 
 # Default target
 all: build
@@ -111,9 +138,10 @@ help:
 	@echo "  $(GREEN)rebuild$(NC)         - Clean and build"
 	@echo ""
 	@echo "$(YELLOW)Installation:$(NC)"
-	@echo "  $(GREEN)install$(NC)         - Install system-wide (requires sudo)"
-	@echo "  $(GREEN)install-local$(NC)   - Install to user bin (recommended, no sudo)"
+	@echo "  $(GREEN)install$(NC)         - Install system-wide (requires sudo, stops existing processes)"
+	@echo "  $(GREEN)install-local$(NC)   - Install to user bin (recommended, no sudo, stops existing processes)"
 	@echo "  $(GREEN)uninstall$(NC)       - Uninstall from system"
+	@echo "  $(GREEN)stop-processes$(NC)  - Stop all running rodmcp processes"
 	@echo ""
 	@echo "$(YELLOW)Configuration:$(NC)"
 	@echo "  $(GREEN)config-visible$(NC)  - Configure visible browser mode"
@@ -248,6 +276,7 @@ test-comprehensive: check-go-available
 ## Install - Install system-wide (requires sudo)
 install: build
 	@echo "$(BLUE)Installing $(PROJECT_NAME) system-wide...$(NC)"
+	$(call stop_existing_processes)
 	@if [ ! -w "$(SYSTEM_BIN)" ]; then \
 		echo "$(YELLOW)Installing to $(SYSTEM_BIN) requires sudo$(NC)"; \
 		sudo cp $(BUILD_DIR)/$(BINARY_NAME) $(SYSTEM_BIN)/$(BINARY_NAME); \
@@ -261,11 +290,17 @@ install: build
 ## Install-local - Install to user bin (no sudo required)
 install-local: build
 	@echo "$(BLUE)Installing $(PROJECT_NAME) locally...$(NC)"
+	$(call stop_existing_processes)
 	@mkdir -p $(LOCAL_BIN)
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(LOCAL_BIN)/$(BINARY_NAME)
 	chmod +x $(LOCAL_BIN)/$(BINARY_NAME)
 	@echo "$(GREEN)✓ Installed to $(LOCAL_BIN)/$(BINARY_NAME)$(NC)"
 	@echo "$(CYAN)Make sure $(LOCAL_BIN) is in your PATH$(NC)"
+
+## Stop-processes - Stop all running rodmcp processes
+stop-processes:
+	@echo "$(BLUE)Stopping all rodmcp processes...$(NC)"
+	$(call stop_existing_processes)
 
 ## Uninstall - Remove installed binary
 uninstall:
