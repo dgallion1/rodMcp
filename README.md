@@ -166,9 +166,21 @@ make install
 make build
 ```
 
-That's it! No additional configuration needed. Claude can dynamically control browser visibility.
+### 4. Configure Claude Code (Important!)
 
-### 4. Test with Claude
+**⚠️ Use the direct `rodmcp` binary, NOT `rodmcp-manager`:**
+
+```bash
+# Add RodMCP to Claude Code (use the DIRECT binary)
+claude mcp add-json rodmcp '{"type": "stdio", "command": "'"$HOME"'/.local/bin/rodmcp", "args": ["--headless", "--log-level=info"], "env": {}}'
+
+# Verify it's working
+claude mcp list  # Should show ✓ Connected
+```
+
+**🚫 Common Mistake**: Never use `rodmcp-manager` as it causes connection conflicts by running multiple instances simultaneously.
+
+### 5. Test with Claude
 Ask Claude: *"What web development tools do you have available?"*
 
 Claude should respond with the 19 RodMCP tools listed above.
@@ -521,6 +533,75 @@ The enhanced connection management prevents the common issue where rodmcp would 
 - **Proactive Health Checks** - Detects and resolves connection issues before they cause failures
 - **Graceful Recovery** - Automatic reconnection and browser restart when problems are detected
 - **Activity Tracking** - Monitors client activity and adapts monitoring frequency accordingly
+
+## 🔧 Troubleshooting
+
+### ⚡ Connection Issues: "Not Connected" Error
+
+If you experience "Not connected" errors after periods of inactivity, this is likely due to conflicting processes or old configurations.
+
+#### **Root Cause: rodmcp-manager Conflicts**
+The most common issue is using the problematic `rodmcp-manager` script instead of the direct `rodmcp` binary. The manager script tries to run both HTTP and stdio modes simultaneously, causing conflicts.
+
+#### **✅ Solution: Use Direct Binary**
+1. **Check your current configuration:**
+   ```bash
+   claude mcp list
+   ```
+
+2. **If you see `rodmcp-manager` in the command, fix it:**
+   ```bash
+   # Remove the problematic configuration
+   claude mcp remove rodmcp
+   
+   # Add the correct direct binary configuration
+   claude mcp add-json rodmcp '{"type": "stdio", "command": "/home/darrell/.local/bin/rodmcp", "args": ["--headless", "--log-level=info"], "env": {}}'
+   ```
+
+3. **Clean up any conflicting processes:**
+   ```bash
+   pkill -f "rodmcp.*http" || echo "No conflicting processes found"
+   rm -f /tmp/rodmcp-http-manager.*
+   ```
+
+4. **Test the connection:**
+   ```bash
+   claude mcp list  # Should show ✓ Connected
+   ```
+
+#### **🔄 Other Connection Issues**
+- **Multiple Instances**: Only run one rodmcp instance at a time
+- **Port Conflicts**: Check for conflicting services on ports 8090 or browser debug ports  
+- **Outdated Version**: Update to the latest version with `make install-local`
+- **Browser Issues**: If browser fails to start, check that Chrome/Chromium is installed
+
+### 🐛 General Troubleshooting Steps
+
+1. **Update to Latest Version:**
+   ```bash
+   cd /path/to/rodmcp
+   git pull origin master
+   make install-local
+   ```
+
+2. **Check Service Health:**
+   ```bash
+   claude mcp list  # Verify connection status
+   rodmcp --help     # Verify installation
+   ```
+
+3. **View Logs for Debugging:**
+   ```bash
+   # Run with debug logging
+   rodmcp --headless --log-level=debug
+   ```
+
+4. **Reset Configuration (if needed):**
+   ```bash
+   # Remove and re-add MCP server
+   claude mcp remove rodmcp
+   claude mcp add-json rodmcp '{"type": "stdio", "command": "/home/darrell/.local/bin/rodmcp", "args": ["--headless", "--log-level=info"], "env": {}}'
+   ```
 
 ### ⚠️ Important: Browser Visibility Fix
 If the browser window doesn't appear in visible mode, ensure you've built with the latest version that includes the browser visibility fix:
