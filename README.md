@@ -6,14 +6,14 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 
 - 🤖 **Works with Claude** - Full MCP protocol support for seamless integration
 - 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless (browser visibility fixed!)
-- 🛠️ **18 Comprehensive Tools** - Complete browser control + file system + HTTP requests
+- 🛠️ **19 Comprehensive Tools** - Complete browser control + file system + HTTP requests + interactive help
 - 🏠 **Easy Install** - No sudo required with local user installation
 - 🚀 **Auto Go Install** - Makefile can install Go locally if not present
 - ⚡ **Go 1.24.5+ Performance** - Fast, reliable browser automation
 
 ## 🛠️ Available Tools
 
-Once installed, Claude gains access to these 18 comprehensive web development tools:
+Once installed, Claude gains access to these 19 comprehensive web development tools:
 
 ### 🌐 Browser Automation Tools
 
@@ -89,6 +89,13 @@ Hover over elements to trigger hover effects
 - **Purpose**: Reveal dropdown menus or hover-triggered content
 - **Example**: "Hover over the navigation menu"
 
+### ❓ Help & Discovery Tools
+
+### 💡 `help`
+Get interactive help, usage examples, and workflow suggestions for rodmcp tools
+- **Purpose**: Discover tool capabilities and learn effective usage patterns
+- **Example**: "Get help for create_page" or "Show me common workflows"
+
 ### 📁 File System Tools
 
 ### 📖 `read_file`
@@ -163,7 +170,9 @@ That's it! No additional configuration needed. Claude can dynamically control br
 ### 4. Test with Claude
 Ask Claude: *"What web development tools do you have available?"*
 
-Claude should respond with the 18 RodMCP tools listed above.
+Claude should respond with the 19 RodMCP tools listed above.
+
+You can also ask: *"Help me get started with rodmcp"* and Claude will use the interactive help system to guide you.
 
 ## 💡 Example Use Cases
 
@@ -181,7 +190,7 @@ then take screenshots of any issues you find."
 
 ## 🧪 Testing
 
-RodMCP includes a comprehensive test suite that validates all 18 MCP tools across 5 categories:
+RodMCP includes a comprehensive test suite that validates all 19 MCP tools across 5 categories:
 
 ### Run Comprehensive Test Suite
 ```bash
@@ -236,6 +245,7 @@ MCP Client ←→ JSON-RPC 2.0 ←→ MCP Server
                                     ├── Browser UI Control Tools (8)
                                     ├── File System Tools (3)  
                                     ├── Network Tools (1)
+                                    ├── Help & Discovery Tools (1)
                                     ├── Browser Manager (Rod)
                                     └── Logging System
 ```
@@ -318,6 +328,15 @@ Makes HTTP requests to URLs.
 - `timeout` (optional): Request timeout in seconds (default: 30)
 
 **Returns:** HTTP response with status, headers, and body content.
+
+### help
+Get interactive help, usage examples, and workflow suggestions for rodmcp tools.
+
+**Parameters:**
+- `topic` (optional): Help topic - 'overview', 'workflows', 'examples', or specific tool name (e.g., 'create_page')
+- `category` (optional): Tool category - 'browser_automation', 'ui_control', 'file_system', 'network'
+
+**Returns:** Contextual help content with usage examples, common workflows, and tool relationships.
 
 ## Development
 
@@ -413,6 +432,7 @@ This fix resolves Chrome's `--no-startup-window` flag that was preventing the br
 - **[Local Install Guide](LOCAL_INSTALL.md)** - Install without sudo (recommended)
 - **[Browser Visibility](BROWSER_VISIBILITY.md)** - Control browser display modes
 - **[MCP Usage Examples](MCP_USAGE.md)** - How to use with Claude effectively
+- **[API Reference](API_REFERENCE.md)** - Complete technical documentation for all 19 tools
 
 ## 📋 System Requirements
 

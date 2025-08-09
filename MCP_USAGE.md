@@ -9,7 +9,7 @@ Ask Claude:
 What web development tools do you have available?
 ```
 
-Claude should respond with the 6 RodMCP tools.
+Claude should respond with the 19 RodMCP tools.
 
 ## Example Use Cases
 
@@ -119,6 +119,22 @@ Create a multi-page website with:
 - contact.html (contact form)
 - shared styles.css
 - Start a live preview server so I can navigate between pages
+```
+
+### help
+```
+Help me get started with rodmcp - show me what tools are available
+and suggest some common workflows for web development.
+```
+
+```
+I want to learn more about the create_page tool - show me examples
+of how to use it effectively.
+```
+
+```
+Show me tools in the ui_control category and how they work together
+for testing user interactions.
 ```
 
 ## Advanced Workflows

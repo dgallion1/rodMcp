@@ -8,7 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Comprehensive Test Suite** - Complete validation of all 18 MCP tools
+- **Interactive Help System** - New `help` MCP tool for tool discovery and guidance
+  - Smart usage hints with examples and workflow suggestions
+  - Category-based tool organization (browser_automation, ui_control, file_system, network)
+  - Context-aware help content with tool relationships
+  - Enhanced tool system with concrete examples and best practices
+  - Interactive workflow guidance for common development patterns
+
+- **Enhanced Tool Documentation** - Comprehensive API reference and examples
+  - New `API_REFERENCE.md` with complete technical documentation for all 19 tools
+  - Detailed parameter specifications and return value formats
+  - Concrete usage examples for each tool
+  - Common workflow patterns and best practices
+  - Enhanced MCP_USAGE.md with help tool examples
+
+- **Comprehensive Test Suite** - Complete validation of all 19 MCP tools
   - 25 automated tests covering 5 categories: File System, Browser Automation, UI Control, Network, JavaScript
   - 100% success rate with detailed performance metrics
   - Interactive HTML test page with form interactions and dynamic content  
@@ -42,7 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Adaptive Automation** - Enables context-aware visibility (visible for demos, headless for speed)
 
 ### Changed
-- Updated tool count from 5 to 6 in documentation and startup logs
+- Updated tool count from 18 to 19 in documentation and startup logs
+- Enhanced README.md with new help tool documentation and improved organization
 - Enhanced browser manager to store configuration for runtime changes
 
 ## [1.0.0] - 2025-08-06
