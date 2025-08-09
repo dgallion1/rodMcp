@@ -2,6 +2,7 @@ package webtools
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -167,17 +168,49 @@ func (t *NavigatePageTool) InputSchema() types.ToolSchema {
 }
 
 func (t *NavigatePageTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
-	start := time.Now()
-	defer func() {
-		duration := time.Since(start).Milliseconds()
-		t.logger.LogToolExecution(t.Name(), args, true, duration)
-	}()
-
-	url, ok := args["url"].(string)
-	if !ok {
-		return nil, fmt.Errorf("url is required")
+	// Add total execution timeout to prevent hanging
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	
+	// Use a channel to handle timeout
+	type result struct {
+		response *types.CallToolResponse
+		err      error
 	}
+	resultChan := make(chan result, 1)
+	
+	go func() {
+		start := time.Now()
+		defer func() {
+			duration := time.Since(start).Milliseconds()
+			t.logger.LogToolExecution(t.Name(), args, true, duration)
+		}()
 
+		url, ok := args["url"].(string)
+		if !ok {
+			resultChan <- result{nil, fmt.Errorf("url is required")}
+			return
+		}
+		
+		resp, err := t.executeNavigation(url)
+		resultChan <- result{resp, err}
+	}()
+	
+	select {
+	case res := <-resultChan:
+		return res.response, res.err
+	case <-ctx.Done():
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: "Navigation timed out after 15 seconds",
+			}},
+			IsError: true,
+		}, nil
+	}
+}
+
+func (t *NavigatePageTool) executeNavigation(url string) (*types.CallToolResponse, error) {
 	// Handle local file paths
 	if !strings.HasPrefix(url, "http") {
 		if absPath, err := filepath.Abs(url); err == nil {
@@ -216,7 +249,8 @@ func (t *NavigatePageTool) Execute(args map[string]interface{}) (*types.CallTool
 		pageID = newPageID
 	}
 
-	info, _ := t.browser.GetPageInfo(pageID)
+	// Add timeout for GetPageInfo to prevent hanging
+	info := t.getPageInfoWithTimeout(pageID, 5*time.Second)
 	currentURL := "unknown"
 	if info != nil {
 		if u, ok := info["url"].(string); ok {
@@ -231,6 +265,36 @@ func (t *NavigatePageTool) Execute(args map[string]interface{}) (*types.CallTool
 			Data: info,
 		}},
 	}, nil
+}
+
+// getPageInfoWithTimeout wraps GetPageInfo with a timeout to prevent hanging
+func (t *NavigatePageTool) getPageInfoWithTimeout(pageID string, timeout time.Duration) map[string]interface{} {
+	type infoResult struct {
+		info map[string]interface{}
+		err  error
+	}
+	resultChan := make(chan infoResult, 1)
+	
+	go func() {
+		info, err := t.browser.GetPageInfo(pageID)
+		resultChan <- infoResult{info, err}
+	}()
+	
+	select {
+	case res := <-resultChan:
+		if res.err != nil {
+			return map[string]interface{}{
+				"url":   "unknown",
+				"error": res.err.Error(),
+			}
+		}
+		return res.info
+	case <-time.After(timeout):
+		return map[string]interface{}{
+			"url":   "unknown",
+			"error": "GetPageInfo timed out",
+		}
+	}
 }
 
 // ScreenshotTool takes screenshots

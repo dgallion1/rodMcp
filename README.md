@@ -5,6 +5,7 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 ## 🌟 Highlights
 
 - 🤖 **Works with Claude** - Full MCP protocol support for seamless integration
+- 🔄 **Robust Connection Management** - Automatic reconnection and health monitoring prevents timeout errors
 - 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless (browser visibility fixed!)
 - 🛠️ **19 Comprehensive Tools** - Complete browser control + file system + HTTP requests + interactive help
 - 🏠 **Easy Install** - No sudo required with local user installation
@@ -503,6 +504,23 @@ RodMCP can run in two modes:
 
 ### Switch Anytime
 You can easily switch between modes - just run `make config-visible` or `make config-headless` and restart Claude.
+
+## 🔄 Connection Management
+
+RodMCP includes robust connection management to prevent timeout errors during idle periods:
+
+### 🚀 **Automatic Health Monitoring**
+- **Connection Health Checks** - Monitors MCP client connection every 30 seconds
+- **Browser Health Monitoring** - Verifies browser connectivity and restarts if needed
+- **Automatic Recovery** - Seamlessly restarts browser with page restoration
+- **Heartbeat System** - Sends periodic pings to maintain connection during idle periods
+
+### 🛡️ **No More "Not Connected" Errors**
+The enhanced connection management prevents the common issue where rodmcp would become unresponsive after periods of inactivity. Now it:
+- **Maintains Active Connections** - Non-blocking input processing with timeout handling
+- **Proactive Health Checks** - Detects and resolves connection issues before they cause failures
+- **Graceful Recovery** - Automatic reconnection and browser restart when problems are detected
+- **Activity Tracking** - Monitors client activity and adapts monitoring frequency accordingly
 
 ### ⚠️ Important: Browser Visibility Fix
 If the browser window doesn't appear in visible mode, ensure you've built with the latest version that includes the browser visibility fix:

@@ -1,5 +1,0 @@
-{
-	"name": "RodMCP Test",
-	"version": "1.0.0",
-	"features": ["browser_automation", "ui_control", "file_system"]
-}

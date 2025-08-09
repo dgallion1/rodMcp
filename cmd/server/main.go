@@ -98,6 +98,9 @@ func main() {
 	// Initialize MCP server
 	mcpServer := mcp.NewServer(log)
 
+	// Set browser manager for health monitoring
+	mcpServer.SetBrowserManager(browserMgr)
+
 	// Register web development tools
 	mcpServer.RegisterTool(webtools.NewCreatePageTool(log))
 	mcpServer.RegisterTool(webtools.NewNavigatePageTool(log, browserMgr))
@@ -123,6 +126,9 @@ func main() {
 	
 	// Network tools
 	mcpServer.RegisterTool(webtools.NewHTTPRequestTool(log))
+	
+	// Help system
+	mcpServer.RegisterTool(webtools.NewHelpTool(log))
 
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -159,6 +165,11 @@ func main() {
 	}
 
 	log.Info("Shutting down RodMCP server")
+	
+	// Gracefully stop the MCP server
+	if err := mcpServer.Stop(); err != nil {
+		log.Error("Error stopping MCP server", zap.Error(err))
+	}
 }
 
 func startHTTPServer() {
@@ -241,6 +252,9 @@ func startHTTPServer() {
 	
 	// Network tools
 	httpServer.RegisterTool(webtools.NewHTTPRequestTool(log))
+	
+	// Help system
+	httpServer.RegisterTool(webtools.NewHelpTool(log))
 
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -342,6 +356,9 @@ func getAllTools() map[string]mcp.Tool {
 	// Network tools
 	tools["http_request"] = webtools.NewHTTPRequestTool(log)
 	
+	// Help system
+	tools["help"] = webtools.NewHelpTool(log)
+	
 	return tools
 }
 
@@ -368,6 +385,9 @@ SERVER FLAGS (for default MCP server):
     --window-width WIDTH  Browser window width (default: 1920)
     --window-height HEIGHT Browser window height (default: 1080)
 
+ENVIRONMENT VARIABLES:
+    RODMCP_BROWSER_PATH   Override browser binary path (optional)
+
 HTTP SERVER FLAGS (for 'rodmcp http'):
     --port PORT           HTTP server port (default: 8080)
     --headless            Run browser in headless mode (default: true for HTTP)
@@ -377,6 +397,7 @@ HTTP SERVER FLAGS (for 'rodmcp http'):
     --slow-motion DURATION Slow motion delay between actions
     --window-width WIDTH  Browser window width (default: 1920)
     --window-height HEIGHT Browser window height (default: 1080)
+    (Also supports RODMCP_BROWSER_PATH environment variable)
 
 EXAMPLES:
     %s                    # Start stdio MCP server

@@ -3,6 +3,10 @@ package browser
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/url"
+	"os"
+	"os/exec"
 	"rodmcp/internal/logger"
 	"strings"
 	"sync"
@@ -11,6 +15,13 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"go.uber.org/zap"
+)
+
+const (
+	// Navigation timeout - how long to wait for page navigation
+	NavigationTimeout = 10 * time.Second
+	// Connection timeout - how long to wait when checking if a URL is reachable
+	ConnectionTimeout = 5 * time.Second
 )
 
 type Manager struct {
@@ -49,8 +60,17 @@ func (m *Manager) Start(config Config) error {
 	// Store config for potential restarts
 	m.config = config
 
+	// Find a working browser binary
+	browserPath, err := m.findWorkingBrowser()
+	if err != nil {
+		return fmt.Errorf("no working browser found: %w", err)
+	}
+	
+	m.logger.WithComponent("browser").Info("Using browser binary", zap.String("path", browserPath))
+
 	// Configure launcher
 	l := launcher.New().
+		Bin(browserPath).
 		Headless(config.Headless).
 		Set("window-size", fmt.Sprintf("%d,%d", config.WindowWidth, config.WindowHeight))
 
@@ -66,7 +86,38 @@ func (m *Manager) Start(config Config) error {
 	// Launch browser
 	url, err := l.Launch()
 	if err != nil {
-		return fmt.Errorf("failed to launch browser: %w", err)
+		// If browser launch failed and we have a specific binary, try Rod's fallback
+		if browserPath != "" {
+			m.logger.WithComponent("browser").Warn("System browser failed, trying Rod's browser download", 
+				zap.String("failed_path", browserPath), zap.Error(err))
+			
+			// Try again with Rod's browser download
+			l = launcher.New().
+				Headless(config.Headless).
+				Set("window-size", fmt.Sprintf("%d,%d", config.WindowWidth, config.WindowHeight))
+			
+			if !config.Headless {
+				l = l.Delete("no-startup-window")
+			}
+			
+			if config.Debug {
+				l = l.Devtools(true)
+			}
+			
+			url, err = l.Launch()
+			if err != nil {
+				return fmt.Errorf("failed to launch browser (system: %s failed, Rod download also failed): %w", browserPath, err)
+			}
+			
+			m.logger.WithComponent("browser").Info("Successfully using Rod's browser download as fallback")
+		} else {
+			// Provide more helpful error message for dependency issues
+			errStr := err.Error()
+			if strings.Contains(errStr, "cannot open shared object file") || strings.Contains(errStr, "not found") {
+				return fmt.Errorf("browser launch failed due to missing system dependencies. Please install required libraries or ensure a compatible browser is available: %w", err)
+			}
+			return fmt.Errorf("failed to launch browser: %w", err)
+		}
 	}
 
 	// Connect to browser
@@ -134,12 +185,23 @@ func (m *Manager) NewPage(url string) (*rod.Page, string, error) {
 	m.mutex.Unlock()
 
 	if url != "" {
-		if err := page.Navigate(url); err != nil {
+		// Check if URL is reachable first
+		if err := m.isURLReachable(url); err != nil {
+			m.closePage(pageID)
+			return nil, "", fmt.Errorf("URL not reachable: %w", err)
+		}
+
+		// Navigate with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), NavigationTimeout)
+		defer cancel()
+		
+		if err := page.Context(ctx).Navigate(url); err != nil {
 			m.closePage(pageID)
 			return nil, "", fmt.Errorf("failed to navigate to %s: %w", url, err)
 		}
 
-		if err := page.WaitLoad(); err != nil {
+		// Wait for page load with timeout
+		if err := page.Context(ctx).WaitLoad(); err != nil {
 			m.closePage(pageID)
 			return nil, "", fmt.Errorf("failed to wait for page load: %w", err)
 		}
@@ -291,11 +353,21 @@ func (m *Manager) NavigateExistingPage(pageID string, url string) error {
 		return err
 	}
 
-	if err := page.Navigate(url); err != nil {
+	// Check if URL is reachable first
+	if err := m.isURLReachable(url); err != nil {
+		return fmt.Errorf("URL not reachable: %w", err)
+	}
+
+	// Navigate with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), NavigationTimeout)
+	defer cancel()
+
+	if err := page.Context(ctx).Navigate(url); err != nil {
 		return fmt.Errorf("failed to navigate to %s: %w", url, err)
 	}
 
-	if err := page.WaitLoad(); err != nil {
+	// Wait for page load with timeout
+	if err := page.Context(ctx).WaitLoad(); err != nil {
 		return fmt.Errorf("failed to wait for page load: %w", err)
 	}
 
@@ -400,6 +472,180 @@ func (m *Manager) SetVisibility(visible bool) error {
 	m.logger.WithComponent("browser").Info("Browser visibility changed successfully",
 		zap.String("mode", mode),
 		zap.Int("pages_restored", len(pageURLs)))
+
+	return nil
+}
+
+// findWorkingBrowser attempts to find a working browser binary with proper fallbacks
+func (m *Manager) findWorkingBrowser() (string, error) {
+	// Check for environment variable override first
+	if envBrowser := os.Getenv("RODMCP_BROWSER_PATH"); envBrowser != "" {
+		if m.isBrowserWorking(envBrowser) {
+			m.logger.WithComponent("browser").Info("Using browser from environment variable", 
+				zap.String("path", envBrowser))
+			return envBrowser, nil
+		} else {
+			m.logger.WithComponent("browser").Warn("Environment browser path not working, falling back to defaults", 
+				zap.String("path", envBrowser))
+		}
+	}
+
+	// List of browser binaries to try in order of preference
+	candidates := []string{
+		// User-specified or system browsers
+		"/home/darrell/.nix-profile/bin/chromium-browser",
+		"/usr/bin/chromium-browser",
+		"/usr/bin/chromium",
+		"/usr/bin/google-chrome",
+		"/usr/bin/google-chrome-stable",
+		"/snap/bin/chromium",
+		// Let Rod download its own if needed (last resort)
+		"",
+	}
+	
+	for _, candidate := range candidates {
+		if candidate == "" {
+			// Empty string means let Rod handle browser download
+			m.logger.WithComponent("browser").Info("Using Rod's browser download as fallback")
+			return candidate, nil
+		}
+		
+		if m.isBrowserWorking(candidate) {
+			return candidate, nil
+		}
+	}
+	
+	return "", fmt.Errorf("no working browser binary found after checking all candidates")
+}
+
+// isBrowserWorking checks if a browser binary exists and has required dependencies
+func (m *Manager) isBrowserWorking(browserPath string) bool {
+	// Check if file exists
+	if _, err := os.Stat(browserPath); err != nil {
+		m.logger.WithComponent("browser").Debug("Browser binary not found", 
+			zap.String("path", browserPath), zap.Error(err))
+		return false
+	}
+	
+	// Try to run browser with --version to check if dependencies are available
+	cmd := exec.Command(browserPath, "--version")
+	if err := cmd.Run(); err != nil {
+		m.logger.WithComponent("browser").Debug("Browser binary failed version check", 
+			zap.String("path", browserPath), zap.Error(err))
+		return false
+	}
+	
+	m.logger.WithComponent("browser").Debug("Browser binary is working", zap.String("path", browserPath))
+	return true
+}
+
+// isURLReachable checks if a URL is reachable before attempting navigation
+func (m *Manager) isURLReachable(targetURL string) error {
+	// Skip check for file:// URLs
+	if strings.HasPrefix(targetURL, "file://") {
+		return nil
+	}
+	
+	// Parse the URL to ensure it's valid
+	parsedURL, err := url.Parse(targetURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL format: %w", err)
+	}
+	
+	// For http/https URLs, do a quick connectivity check
+	if parsedURL.Scheme == "http" || parsedURL.Scheme == "https" {
+		client := &http.Client{
+			Timeout: ConnectionTimeout,
+		}
+		
+		// Use HEAD request for faster check
+		ctx, cancel := context.WithTimeout(context.Background(), ConnectionTimeout)
+		defer cancel()
+		
+		req, err := http.NewRequestWithContext(ctx, "HEAD", targetURL, nil)
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+		
+		resp, err := client.Do(req)
+		if err != nil {
+			return fmt.Errorf("URL not reachable: %w", err)
+		}
+		resp.Body.Close()
+		
+		// Accept any status code - even errors like 404 mean the server is reachable
+		m.logger.WithComponent("browser").Debug("URL reachability check",
+			zap.String("url", targetURL),
+			zap.Int("status", resp.StatusCode))
+	}
+	
+	return nil
+}
+
+// CheckHealth verifies the browser connection is still active
+func (m *Manager) CheckHealth() error {
+	if m.browser == nil {
+		return fmt.Errorf("browser not started")
+	}
+
+	// Try to get browser version as a simple health check
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	
+	// Use a simple evaluation to check if browser is responsive
+	_, err := m.browser.Context(ctx).Pages()
+	if err != nil {
+		m.logger.WithComponent("browser").Warn("Browser health check failed",
+			zap.Error(err))
+		return fmt.Errorf("browser connection unhealthy: %w", err)
+	}
+
+	return nil
+}
+
+// EnsureHealthy checks browser health and restarts if needed
+func (m *Manager) EnsureHealthy() error {
+	if err := m.CheckHealth(); err != nil {
+		m.logger.WithComponent("browser").Info("Browser unhealthy, attempting restart",
+			zap.Error(err))
+		
+		// Store current page URLs before restart
+		pageURLs := make(map[string]string)
+		m.mutex.RLock()
+		for id, page := range m.pages {
+			if pageInfo := page.MustInfo(); pageInfo != nil {
+				pageURLs[id] = pageInfo.URL
+			}
+		}
+		m.mutex.RUnlock()
+
+		// Stop and restart browser
+		if stopErr := m.Stop(); stopErr != nil {
+			m.logger.WithComponent("browser").Error("Failed to stop unhealthy browser",
+				zap.Error(stopErr))
+		}
+
+		// Create new context
+		m.ctx, m.cancel = context.WithCancel(context.Background())
+
+		if startErr := m.Start(m.config); startErr != nil {
+			return fmt.Errorf("failed to restart browser: %w", startErr)
+		}
+
+		// Restore pages
+		for oldID, url := range pageURLs {
+			if url != "" {
+				if _, _, restoreErr := m.NewPage(url); restoreErr != nil {
+					m.logger.WithComponent("browser").Warn("Failed to restore page after restart",
+						zap.String("page_id", oldID),
+						zap.String("url", url),
+						zap.Error(restoreErr))
+				}
+			}
+		}
+
+		m.logger.WithComponent("browser").Info("Browser restarted successfully")
+	}
 
 	return nil
 }
