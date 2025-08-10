@@ -257,6 +257,39 @@ Test my website for browser compatibility:
 "Create a multi-page site and start a live preview server so I can navigate between pages"
 ```
 
+## Configuration Modes
+
+### Stdio Mode (Default)
+Configure in `~/.config/claude/mcp_servers.json`:
+```json
+{
+  "rodmcp": {
+    "command": "/home/darrell/.local/bin/rodmcp",
+    "args": [
+      "--headless=false",
+      "--log-level=info"
+    ]
+  }
+}
+```
+
+### HTTP Mode (Persistent Browser)
+For interactive workflows where pages need to stay open:
+```json
+{
+  "rodmcp": {
+    "url": "http://localhost:8090"
+  }
+}
+```
+
+Start HTTP server: `./rodmcp http --port 8090 --headless=false`
+
+**Key Differences:**
+- **Stdio**: Pages may close after operations complete
+- **HTTP**: Browser stays visible, pages persist between operations
+- **Use HTTP for**: Interactive debugging, multi-step workflows, watching live changes
+
 ## Troubleshooting
 
 If Claude can't use the tools:
@@ -264,6 +297,12 @@ If Claude can't use the tools:
 2. Verify the MCP configuration
 3. Restart Claude Desktop/CLI
 4. Ask Claude: "Can you see the rodmcp tools?"
+
+**Connection Issues ("Not connected" errors):**
+- Check if stdio vs HTTP mode mismatch
+- Verify correct port in HTTP configuration
+- Ensure HTTP server is running on correct port
+- Kill conflicting processes on the port
 
 For development mode (visible browser):
 ```
