@@ -166,8 +166,11 @@ make install  # Automatically stops existing processes (requires sudo)
 make build
 ```
 
-### 4. Configure Claude Code (Important!)
+### 4. Configure Claude Code (Choose Connection Mode)
 
+RodMCP supports two connection modes: **stdio** (recommended) and **HTTP**. Choose based on your needs:
+
+#### 📡 **Stdio Mode (Recommended)**
 **⚠️ Use the direct `rodmcp` binary, NOT `rodmcp-manager`:**
 
 ```bash
@@ -179,6 +182,43 @@ claude mcp list  # Should show ✓ Connected
 ```
 
 **🚫 Common Mistake**: Never use `rodmcp-manager` as it causes connection conflicts by running multiple instances simultaneously.
+
+#### 🌐 **HTTP Mode (Alternative)**
+For environments where stdio doesn't work or for debugging purposes:
+
+**1. Start RodMCP in HTTP mode:**
+```bash
+# Run in background (recommended)
+rodmcp --http --port=8090 --headless --log-level=info &
+
+# Or run in foreground for debugging
+rodmcp --http --port=8090 --headless --log-level=debug
+```
+
+**2. Configure Claude Code for HTTP:**
+```bash
+# Add RodMCP HTTP server to Claude Code
+claude mcp add-json rodmcp-http '{"type": "http", "url": "http://localhost:8090", "env": {}}'
+
+# Verify connection
+claude mcp list  # Should show ✓ Connected
+```
+
+**HTTP Mode Features:**
+- Same 19 tools as stdio mode
+- RESTful API at `http://localhost:8090`
+- Useful for debugging with browser dev tools
+- Can be accessed by multiple clients simultaneously
+- Optional authentication via environment variables
+
+**Stop HTTP server:**
+```bash
+# Stop background process
+pkill -f "rodmcp.*http"
+
+# Or use built-in process management
+make stop-processes
+```
 
 ### 5. Test with Claude
 Ask Claude: *"What web development tools do you have available?"*
