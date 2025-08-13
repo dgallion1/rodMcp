@@ -54,10 +54,12 @@ check_and_update_rodmcp() {
         print_status "Checking for RodMCP updates..."
         cd "$SCRIPT_DIR"
         
-        # Show current version
-        if [[ -x "$RODMCP_BIN" ]]; then
+        # Show current version (skip if server is running to avoid conflicts)
+        if [[ -x "$RODMCP_BIN" ]] && ! pgrep -f "rodmcp.*http" >/dev/null 2>&1; then
             local current_version=$(timeout 3 "$RODMCP_BIN" version 2>/dev/null | head -1 | cut -d' ' -f2 2>/dev/null || echo "unknown")
             print_status "Current version: $current_version"
+        elif pgrep -f "rodmcp.*http" >/dev/null 2>&1; then
+            print_status "RodMCP server already running, will restart after update check"
         fi
         
         # Fetch latest changes
@@ -74,11 +76,32 @@ check_and_update_rodmcp() {
                 pkill -f "rodmcp.*http" 2>/dev/null || true
                 sleep 1
                 
+                # Handle git state properly
+                if git status --porcelain | grep -q .; then
+                    print_status "Local changes detected, stashing before update..."
+                    git stash push -m "Auto-stash before startup script update" --quiet
+                    local stashed=true
+                else
+                    local stashed=false
+                fi
+                
                 if git pull origin master --quiet && make install-local; then
-                    local new_version=$(timeout 3 "$RODMCP_BIN" version 2>/dev/null | head -1 | cut -d' ' -f2 2>/dev/null || echo "unknown")
-                    print_success "RodMCP updated to version $new_version"
+                    # Skip version check after update to avoid conflicts with any running processes
+                    print_success "RodMCP updated successfully"
+                    
+                    # Restore stash if we created one
+                    if [[ "$stashed" == "true" ]]; then
+                        print_status "Restoring local changes..."
+                        git stash pop --quiet 2>/dev/null || print_warning "Could not restore some local changes"
+                    fi
                 else
                     print_error "Failed to update RodMCP, continuing with current version"
+                    
+                    # Restore stash even on failure
+                    if [[ "$stashed" == "true" ]]; then
+                        print_status "Restoring local changes..."
+                        git stash pop --quiet 2>/dev/null || print_warning "Could not restore some local changes"
+                    fi
                 fi
             else
                 print_status "RodMCP is up to date"
