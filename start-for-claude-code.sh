@@ -283,17 +283,28 @@ if curl -s "http://localhost:$PORT/health" >/dev/null 2>&1; then
     
     print_success "Ready for Claude Code integration!"
     echo
-    # Also configure Claude Code with CLI for better compatibility
-    print_status "Configuring Claude Code via CLI..."
-    if claude mcp list | grep -q "rodmcp"; then
-        claude mcp remove rodmcp >/dev/null 2>&1 || true
-    fi
+    # Configure Claude Code MCP project config
+    print_status "Configuring Claude Code MCP project config..."
+    local project_mcp_config="$SCRIPT_DIR/.mcp.json"
     
-    # Use stdio mode for Claude Code (more reliable)
-    if claude mcp add --transport stdio rodmcp /home/darrell/.local/bin/rodmcp 2>/dev/null; then
-        print_success "Added RodMCP to Claude Code (stdio mode)"
+    # Create project MCP config with proper arguments
+    cat > "$project_mcp_config" << 'EOF'
+{
+  "mcpServers": {
+    "rodmcp": {
+      "type": "stdio",
+      "command": "/home/darrell/.local/bin/rodmcp",
+      "args": ["--headless", "--log-level=info"],
+      "env": {}
+    }
+  }
+}
+EOF
+    
+    if [[ -f "$project_mcp_config" ]]; then
+        print_success "Created Claude Code project MCP config: $project_mcp_config"
     else
-        print_warning "Could not configure Claude Code automatically"
+        print_warning "Could not create Claude Code project MCP config"
     fi
     
     print_status "Next steps:"

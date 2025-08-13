@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "rodmcp": {
+      "type": "stdio",
+      "command": "/home/darrell/.local/bin/rodmcp",
+      "args": ["--headless", "--log-level=info"],
+      "env": {}
+    }
+  }
+}
