@@ -46,6 +46,36 @@ Examples:
 		
 Perfect for: Loading content, switching pages, testing workflows`,
 
+		"form_fill": `📝 Complete form automation with validation and submission (🔥 NEW)
+		
+Purpose: Ultimate form handling for all input types and workflows
+Examples: 
+  • "Fill login form with username/password and submit"
+  • "Complete checkout with billing/shipping information"
+  • "Automate contact form with validation checking"
+		
+Perfect for: Registration flows, e-commerce, contact forms, multi-step wizards`,
+
+		"wait_for_condition": `⚡ Wait for custom JavaScript conditions (🔥 NEW)
+		
+Purpose: Smart waiting for modern apps with dynamic content
+Examples:
+  • "Wait for React component state: window.appReady === true"
+  • "Wait for API data: document.querySelectorAll('.item').length >= 10"  
+  • "Wait for animation: element.style.opacity === '1'"
+		
+Perfect for: SPAs, animations, API responses, state changes`,
+
+		"assert_element": `🧪 Comprehensive element testing framework (🔥 NEW)
+		
+Purpose: Professional testing with 15+ assertion types
+Examples:
+  • "Assert button is visible and enabled"
+  • "Verify form field contains expected text"
+  • "Check element has correct CSS class"
+		
+Perfect for: Automated testing, validation, QA workflows, UI verification`,
+
 		"execute_script": `⚡ Execute JavaScript code in browser pages
 		
 Purpose: DOM manipulation, testing, API calls, custom interactions
@@ -122,6 +152,107 @@ func GetToolExamples(toolName string) []ToolExample {
 });`,
 				},
 				Expected: "Validates all forms and logs results to console",
+			},
+		},
+		
+		"form_fill": {
+			{
+				Name: "Contact Form Automation",
+				Description: "Fill out complete contact form with validation",
+				Parameters: map[string]interface{}{
+					"fields": map[string]interface{}{
+						"#name": "John Doe",
+						"#email": "john@example.com",
+						"#message": "Hello! I'm interested in your services.",
+						"select[name='department']": "sales",
+						"input[name='newsletter']": true,
+					},
+					"submit": true,
+					"validate_required": true,
+				},
+				Expected: "Fills all fields, validates required fields, and submits form",
+			},
+			{
+				Name: "E-commerce Checkout",
+				Description: "Complete checkout form for online purchase",
+				Parameters: map[string]interface{}{
+					"fields": map[string]interface{}{
+						"#firstName": "Jane",
+						"#lastName": "Smith", 
+						"#email": "jane.smith@example.com",
+						"#address": "123 Main St",
+						"#city": "San Francisco",
+						"select[name='state']": "CA",
+						"#zipCode": "94102",
+						"input[name='saveInfo']": false,
+					},
+					"validate_required": true,
+					"trigger_events": true,
+				},
+				Expected: "Completes checkout form with billing information and validation",
+			},
+		},
+		
+		"wait_for_condition": {
+			{
+				Name: "API Response Waiting",
+				Description: "Wait for API data to load in React app",
+				Parameters: map[string]interface{}{
+					"condition": "window.appState && window.appState.dataLoaded === true",
+					"description": "Wait for React app data loading to complete",
+					"timeout": 15,
+					"interval": 200,
+				},
+				Expected: "Waits until React app state indicates data is loaded",
+			},
+			{
+				Name: "Animation Completion",
+				Description: "Wait for CSS animation to finish",
+				Parameters: map[string]interface{}{
+					"condition": "document.querySelector('.loading-spinner').style.display === 'none'",
+					"description": "Wait for loading animation to complete",
+					"timeout": 10,
+					"interval": 100,
+					"return_value": true,
+				},
+				Expected: "Waits for loading spinner to disappear, returns final condition value",
+			},
+		},
+		
+		"assert_element": {
+			{
+				Name: "Login Success Validation",
+				Description: "Assert successful login with multiple checks",
+				Parameters: map[string]interface{}{
+					"selector": ".welcome-message",
+					"assertion": "contains_text",
+					"expected_value": "Welcome back",
+					"timeout": 5,
+					"case_sensitive": false,
+				},
+				Expected: "Passes if welcome message contains expected text",
+			},
+			{
+				Name: "Form Field Validation",
+				Description: "Assert form field has correct value and attributes",
+				Parameters: map[string]interface{}{
+					"selector": "#email",
+					"assertion": "attribute_equals",
+					"attribute_name": "value",
+					"expected_value": "test@example.com",
+					"timeout": 2,
+				},
+				Expected: "Passes if email field contains the expected value",
+			},
+			{
+				Name: "Element Visibility Test",
+				Description: "Verify element is visible and properly styled",
+				Parameters: map[string]interface{}{
+					"selector": ".success-alert",
+					"assertion": "visible",
+					"timeout": 3,
+				},
+				Expected: "Passes if success alert is visible on screen",
 			},
 		},
 	}

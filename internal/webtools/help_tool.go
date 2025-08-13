@@ -92,7 +92,7 @@ func (t *HelpTool) Execute(args map[string]interface{}) (*types.CallToolResponse
 func (t *HelpTool) getOverview() string {
 	return `# 🛠️ RodMCP Tools Overview
 
-RodMCP provides 19 comprehensive web development tools organized into 5 categories:
+RodMCP provides 22 comprehensive web development tools organized into 7 categories:
 
 ## 🌐 Browser Automation (6 tools)
 • **create_page** - Generate HTML pages with CSS/JavaScript  
@@ -113,6 +113,15 @@ RodMCP provides 19 comprehensive web development tools organized into 5 categori
 ## 🕷️ Screen Scraping (1 tool)
 • **screen_scrape** - Extract structured data from web pages
 
+## 📝 Form Automation (1 tool)
+• **form_fill** - Complete form automation with validation and submission
+
+## ⚡ Advanced Waiting (1 tool)
+• **wait_for_condition** - Wait for custom JavaScript conditions (animations, APIs, state changes)
+
+## 🧪 Testing & Assertions (1 tool)
+• **assert_element** - Comprehensive element testing (15+ assertion types)
+
 ## 📁 File System (3 tools)
 • **read_file** / **write_file** - File operations
 • **list_directory** - Browse project structure
@@ -121,9 +130,11 @@ RodMCP provides 19 comprehensive web development tools organized into 5 categori
 • **http_request** - Test APIs and web services
 
 ## 💡 Quick Start Tips:
-1. Use **help** with tool name for detailed examples: help create_page
+1. Use **help** with tool name for detailed examples: help form_fill
 2. Use **help workflows** for common usage patterns
 3. Use **help examples** for ready-to-use code snippets
+
+🔥 **New Power Tools**: form_fill, wait_for_condition, and assert_element provide professional-grade automation and testing capabilities!
 
 Try: help workflows to see common development patterns!`
 }
@@ -144,12 +155,43 @@ create_page:
   css: "body{font-family:Arial} header{background:#8B4513;color:white}"
 ` + "```" + `
 
-## 🧪 Test Form Workflow  
+## 📝 Complete Form Automation
+` + "```" + `
+form_fill:
+  fields:
+    "#email": "user@example.com"
+    "#password": "securepass123"  
+    "select[name='country']": "US"
+    "input[name='newsletter']": true
+  submit: true
+  validate_required: true
+` + "```" + `
+
+## ⚡ Smart Waiting for Dynamic Content
+` + "```" + `
+wait_for_condition:
+  condition: "document.querySelectorAll('.product-card').length >= 10"
+  description: "Wait for product grid to load completely"
+  timeout: 15
+  interval: 500
+` + "```" + `
+
+## 🧪 Comprehensive Element Testing
+` + "```" + `
+assert_element:
+  selector: ".success-alert"
+  assertion: "contains_text"
+  expected_value: "Form submitted successfully"
+  timeout: 5
+  case_sensitive: false
+` + "```" + `
+
+## 🧪 Advanced Test Form Workflow  
 ` + "```" + `
 1. navigate_page: "contact-form.html"
-2. type_text: selector="#email", text="test@example.com"
-3. click_element: selector="button[type=submit]" 
-4. wait_for_element: selector=".success-message"
+2. form_fill: Fill entire form with structured data
+3. wait_for_condition: "!!window.formValidated"
+4. assert_element: selector=".success-message", assertion="visible"
 5. take_screenshot: filename="form-test.png"
 ` + "```" + `
 
@@ -158,7 +200,8 @@ create_page:
 1. http_request: url="https://api.example.com/users", method="GET"
 2. create_page: Build test interface showing API data
 3. execute_script: Make API calls and display results
-4. take_screenshot: Document API response
+4. assert_element: Check API response display
+5. take_screenshot: Document API response
 ` + "```" + `
 
 ## 📊 Development Server Setup
@@ -166,8 +209,11 @@ create_page:
 1. create_page: Build your HTML pages
 2. live_preview: port=8080, directory="."
 3. navigate_page: "localhost:8080"
-4. Test and iterate with take_screenshot
+4. wait_for_condition: "document.readyState === 'complete'"
+5. Test and iterate with take_screenshot
 ` + "```" + `
+
+🔥 **Pro Tip**: Combine form_fill + wait_for_condition + assert_element for robust automation workflows!
 
 Use help [tool_name] for detailed tool-specific examples!`
 }

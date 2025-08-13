@@ -10,6 +10,9 @@ const (
 	UIControl        ToolCategory = "ui_control"  
 	FileSystem       ToolCategory = "file_system"
 	Network          ToolCategory = "network"
+	FormAutomation   ToolCategory = "form_automation"
+	AdvancedWaiting  ToolCategory = "advanced_waiting"
+	Testing          ToolCategory = "testing"
 )
 
 // UsageHint provides contextual information about tool usage
@@ -107,6 +110,51 @@ func (h *HelpSystem) initializeHints() {
 		WorksWith: []string{"navigate_page", "create_page", "take_screenshot", "http_request"},
 	}
 
+	h.hints["form_fill"] = UsageHint{
+		Tool:        "form_fill",
+		Category:    FormAutomation,
+		Description: "Complete form automation solution that handles all input types (text, select, radio, checkbox, textarea) with validation and optional submission. The ultimate tool for login forms, contact forms, checkout processes, and registration workflows.",
+		Example:     "Fill out entire contact form with name, email, message, country selection, and newsletter subscription, then submit with validation",
+		CommonUse: []string{
+			"Automate login and registration workflows",
+			"Fill complex checkout forms with multiple fields",
+			"Test form validation and error handling",
+			"Submit contact forms and feedback forms",
+			"Handle multi-step form wizards efficiently",
+		},
+		WorksWith: []string{"navigate_page", "wait_for_condition", "assert_element", "take_screenshot"},
+	}
+
+	h.hints["wait_for_condition"] = UsageHint{
+		Tool:        "wait_for_condition",
+		Category:    AdvancedWaiting,
+		Description: "Wait for custom JavaScript conditions to become true. Much more powerful than waiting for elements - perfect for animations, API responses, state changes, and complex application logic. Essential for modern single-page applications.",
+		Example:     "Wait for React component state to update, API data to load, or animation to complete before proceeding with automation",
+		CommonUse: []string{
+			"Wait for API responses and data loading",
+			"Handle animation and transition completion",
+			"Wait for React/Vue component state changes", 
+			"Monitor application loading states",
+			"Wait for dynamic content and lazy loading",
+		},
+		WorksWith: []string{"execute_script", "assert_element", "form_fill", "screen_scrape"},
+	}
+
+	h.hints["assert_element"] = UsageHint{
+		Tool:        "assert_element",
+		Category:    Testing,
+		Description: "Comprehensive element testing framework with 15+ assertion types. Essential for automated testing, validation workflows, and ensuring UI correctness. Provides detailed pass/fail reporting with diagnostics.",
+		Example:     "Assert that login button is visible and enabled, success message contains correct text, and form fields have expected values",
+		CommonUse: []string{
+			"Verify element existence and visibility states",
+			"Test form field values and states",
+			"Validate text content and attributes",
+			"Check CSS classes and styling",
+			"Count elements and verify quantities",
+		},
+		WorksWith: []string{"form_fill", "wait_for_condition", "click_element", "navigate_page"},
+	}
+
 	// Add more hints for other tools...
 }
 
@@ -126,27 +174,41 @@ func (h *HelpSystem) GetToolsByCategory(category ToolCategory) []UsageHint {
 }
 
 func (h *HelpSystem) GetWorkflowSuggestion(goals []string) string {
-	// Simple workflow suggestion based on common patterns
+	// Enhanced workflow suggestions with new power tools
 	suggestions := []string{
 		"🌐 **Web Development Workflow:**",
 		"1. Use `create_page` to build your HTML with CSS and JavaScript",
 		"2. Start `live_preview` server to serve your files locally", 
 		"3. Use `navigate_page` to open your page in the browser",
-		"4. Take `take_screenshot` to document your progress",
-		"5. Use `execute_script` to test JavaScript functionality",
+		"4. Use `wait_for_condition` to ensure page is fully loaded",
+		"5. Take `take_screenshot` to document your progress",
+		"6. Use `execute_script` to test JavaScript functionality",
 		"",
-		"🧪 **Testing Workflow:**",
+		"📝 **Form Automation Workflow (🔥 NEW):**",
+		"1. Use `navigate_page` to load your form page",
+		"2. Use `form_fill` to complete entire form with structured data",
+		"3. Use `assert_element` to verify form submission success",
+		"4. Use `take_screenshot` to document the result",
+		"",
+		"🧪 **Advanced Testing Workflow (🔥 ENHANCED):**",
 		"1. Use `navigate_page` to load the page you want to test",
-		"2. Use `click_element` and `type_text` to simulate user actions",
-		"3. Use `wait_for_element` to handle dynamic content loading",
-		"4. Use `get_element_text` to verify expected results",
-		"5. Use `take_screenshot` to capture test results",
+		"2. Use `wait_for_condition` to wait for dynamic content/APIs",
+		"3. Use `form_fill` for complex form interactions",
+		"4. Use `assert_element` with comprehensive validation",
+		"5. Use `take_screenshot` to capture test evidence",
+		"",
+		"⚡ **Modern SPA Testing (🔥 NEW):**",
+		"1. Use `navigate_page` to load your React/Vue application",
+		"2. Use `wait_for_condition` to wait for component state changes",
+		"3. Use `form_fill` for user registration/login flows",
+		"4. Use `assert_element` to verify UI state and content",
+		"5. Use `screen_scrape` to extract and validate data",
 		"",
 		"📊 **API Testing Workflow:**", 
 		"1. Use `http_request` to test your API endpoints",
 		"2. Use `create_page` to build a test interface",
 		"3. Use `execute_script` to make API calls from the browser",
-		"4. Use `get_element_text` to verify response data display",
+		"4. Use `assert_element` to verify response data display",
 	}
 	
 	return fmt.Sprintf("%s", joinStrings(suggestions, "\n"))
