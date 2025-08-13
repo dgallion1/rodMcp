@@ -215,19 +215,18 @@ SERVER_PID=$!
 # Wait a moment for server to start
 sleep 2
 
-# Update Claude Code MCP configuration
-update_claude_config() {
-    local config_dir="$HOME/.config/claude-code"
-    local config_file="$config_dir/mcp-servers.json"
+# Update Claude configurations for both Desktop and Code
+update_claude_configs() {
+    # Update Claude Code (HTTP mode)
+    local code_config_dir="$HOME/.config/claude-code"
+    local code_config_file="$code_config_dir/mcp-servers.json"
     
-    # Create config directory if it doesn't exist
-    if [[ ! -d "$config_dir" ]]; then
-        mkdir -p "$config_dir"
-        print_status "Created Claude Code config directory: $config_dir"
+    if [[ ! -d "$code_config_dir" ]]; then
+        mkdir -p "$code_config_dir"
+        print_status "Created Claude Code config directory: $code_config_dir"
     fi
     
-    # Create or update MCP servers configuration
-    local server_config="{
+    local code_server_config="{
   \"mcpServers\": {
     \"rodmcp-web-automation\": {
       \"url\": \"http://localhost:$PORT\"
@@ -235,23 +234,42 @@ update_claude_config() {
   }
 }"
     
-    if [[ -f "$config_file" ]]; then
-        # Backup existing config
-        cp "$config_file" "$config_file.backup"
-        print_status "Backed up existing config to: $config_file.backup"
-        
-        # Check if rodmcp is already configured
-        if grep -q "rodmcp" "$config_file"; then
-            print_status "RodMCP already configured, updating port to $PORT"
-        else
-            print_status "Adding RodMCP to existing Claude Code configuration"
-        fi
-    else
-        print_status "Creating new Claude Code MCP configuration"
+    if [[ -f "$code_config_file" ]]; then
+        cp "$code_config_file" "$code_config_file.backup"
+        print_status "Backed up Claude Code config to: $code_config_file.backup"
     fi
     
-    echo "$server_config" > "$config_file"
-    print_success "Updated Claude Code configuration: $config_file"
+    echo "$code_server_config" > "$code_config_file"
+    print_success "Updated Claude Code configuration (HTTP): $code_config_file"
+    
+    # Update Claude Desktop (stdio mode)  
+    local desktop_config_dir="$HOME/.config/claude"
+    local desktop_config_file="$desktop_config_dir/mcp_servers.json"
+    
+    if [[ ! -d "$desktop_config_dir" ]]; then
+        mkdir -p "$desktop_config_dir"
+        print_status "Created Claude Desktop config directory: $desktop_config_dir"
+    fi
+    
+    local desktop_server_config="{
+  \"rodmcp\": {
+    \"command\": \"/home/darrell/.local/bin/rodmcp\",
+    \"args\": [
+      \"--headless=true\",
+      \"--log-level=info\"
+    ]
+  }
+}"
+    
+    if [[ -f "$desktop_config_file" ]]; then
+        cp "$desktop_config_file" "$desktop_config_file.backup"
+        print_status "Backed up Claude Desktop config to: $desktop_config_file.backup"
+    fi
+    
+    echo "$desktop_server_config" > "$desktop_config_file"
+    print_success "Updated Claude Desktop configuration (stdio): $desktop_config_file"
+    
+    print_status "Both Claude Desktop and Claude Code are now configured for RodMCP"
 }
 
 # Check if server started successfully
@@ -260,15 +278,16 @@ if curl -s "http://localhost:$PORT/health" >/dev/null 2>&1; then
     print_success "PID: $SERVER_PID"
     print_success "Health check: http://localhost:$PORT/health"
     
-    # Update Claude Code configuration
-    update_claude_config
+    # Update Claude configurations for both Desktop and Code
+    update_claude_configs
     
     print_success "Ready for Claude Code integration!"
     echo
     print_status "Next steps:"
-    echo "1. Restart Claude Code (if running): pkill claude-code && claude-code"
-    echo "2. Ask Claude: 'What tools do you have available?'"
-    echo "3. Start automating: 'Create a simple HTML page and take a screenshot'"
+    echo "1. Restart Claude Desktop: Close and reopen Claude Desktop app"
+    echo "2. Restart Claude Code (if using): pkill claude-code && claude-code"  
+    echo "3. Ask Claude: 'What tools do you have available?'"
+    echo "4. Start automating: 'Create a simple HTML page and take a screenshot'"
     echo
     print_status "To stop server: kill $SERVER_PID"
     print_status "Server running in background - script will now exit"
