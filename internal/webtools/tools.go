@@ -2069,7 +2069,7 @@ func (t *ScreenScrapeTool) Name() string {
 }
 
 func (t *ScreenScrapeTool) Description() string {
-	return "Extract structured data from web pages using advanced scraping techniques"
+	return "Extract structured data from web pages using CSS selectors. Supports single item extraction, multiple item arrays, dynamic content waiting, lazy loading, and custom JavaScript execution. Use for scraping text, links, images, form data, and complex page structures."
 }
 
 func (t *ScreenScrapeTool) InputSchema() types.ToolSchema {
@@ -2078,51 +2078,59 @@ func (t *ScreenScrapeTool) InputSchema() types.ToolSchema {
 		Properties: map[string]interface{}{
 			"url": map[string]interface{}{
 				"type":        "string",
-				"description": "URL to scrape (optional if page_id provided)",
+				"description": "URL to scrape (optional if page_id provided). Example: 'https://example.com/products'",
 			},
 			"page_id": map[string]interface{}{
 				"type":        "string",
-				"description": "Existing page ID to scrape (optional if url provided)",
+				"description": "Existing page ID to scrape from current browser session (optional if url provided). Use this for scraping already loaded pages.",
 			},
 			"selectors": map[string]interface{}{
 				"type":        "object",
-				"description": "Key-value pairs where keys are field names and values are CSS selectors",
+				"description": "CSS selectors mapping field names to elements. Examples: {'title': 'h1', 'price': '.price-value', 'description': 'p.desc', 'link': 'a[href]', 'image': 'img[src]', 'rating': '[data-rating]'}. Supports: #id, .class, [attribute], tag, :nth-child(), :contains(), descendant combinators.",
 				"additionalProperties": map[string]interface{}{
 					"type": "string",
+				},
+				"examples": []interface{}{
+					map[string]interface{}{
+						"title":       "h1.product-title",
+						"price":       ".price-current",
+						"description": ".product-description p",
+						"image":       "img.hero-image",
+					},
 				},
 			},
 			"extract_type": map[string]interface{}{
 				"type":        "string",
-				"description": "Type of data to extract: 'single' for one item, 'multiple' for array of items",
+				"description": "Extraction mode: 'single' extracts one item with all selectors, 'multiple' extracts array of items using container_selector. Use 'single' for page headers, forms, or unique elements. Use 'multiple' for product lists, articles, search results.",
 				"enum":        []string{"single", "multiple"},
 				"default":     "single",
 			},
 			"container_selector": map[string]interface{}{
 				"type":        "string",
-				"description": "Container selector for multiple items (required for extract_type=multiple)",
+				"description": "Container selector for multiple items (REQUIRED when extract_type='multiple'). Each container becomes one item in results array. Examples: '.product-card', 'article', '.search-result', 'tr', '.item-container'",
 			},
 			"wait_for": map[string]interface{}{
 				"type":        "string",
-				"description": "CSS selector to wait for before scraping",
+				"description": "CSS selector to wait for before scraping (handles dynamic content). Examples: '.loading-complete', '[data-loaded=true]', '.dynamic-content', '.ajax-loaded'. Useful for SPAs, AJAX content, lazy-loaded sections.",
 			},
 			"wait_timeout": map[string]interface{}{
 				"type":        "integer",
-				"description": "Timeout in seconds to wait for elements (default: 10)",
+				"description": "Maximum seconds to wait for elements (default: 10). Increase for slow-loading content.",
 				"default":     10,
 			},
 			"include_metadata": map[string]interface{}{
 				"type":        "boolean",
-				"description": "Include page metadata (title, url, timestamp)",
+				"description": "Include page metadata in results (title, url, timestamp, extraction_time). Disable for cleaner data output.",
 				"default":     true,
 			},
 			"scroll_to_load": map[string]interface{}{
 				"type":        "boolean",
-				"description": "Scroll to bottom to trigger lazy loading",
+				"description": "Auto-scroll to page bottom to trigger lazy loading (infinite scroll, image loading). Use for content that loads on scroll.",
 				"default":     false,
 			},
 			"custom_script": map[string]interface{}{
 				"type":        "string",
-				"description": "Custom JavaScript to execute before scraping",
+				"description": "Custom JavaScript to execute before scraping. Examples: 'document.querySelector(\".load-more\").click()', 'window.scrollTo(0, document.body.scrollHeight)', 'localStorage.setItem(\"view\", \"list\")'. Use for clicking buttons, changing views, triggering content.",
 			},
 		},
 		Required: []string{"selectors"},

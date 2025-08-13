@@ -93,10 +93,16 @@ Hover over elements to trigger hover effects
 ### 🕷️ Screen Scraping Tools
 
 ### 📊 `screen_scrape`
-Extract structured data from web pages using advanced scraping techniques
+Extract structured data from web pages using CSS selectors with advanced scraping capabilities
 - **Purpose**: Automated data extraction from websites and web applications
-- **Features**: Single & multiple item extraction, smart element detection, attribute extraction
-- **Example**: "Extract all product information from this e-commerce page" or "Scrape article titles and links from this news site"
+- **Features**: Single & multiple item extraction, dynamic content waiting, lazy loading support, custom JavaScript execution
+- **CSS Selectors**: Supports #id, .class, [attribute], :nth-child(), descendant combinators, and complex selectors
+- **Advanced**: Wait for dynamic content, trigger lazy loading, execute custom scripts before scraping
+- **Use Cases**: Product catalogs, news articles, search results, form data, image galleries, API alternatives
+- **Examples**: 
+  - Single item: "Extract the main article title, content, and author from this blog post"
+  - Multiple items: "Scrape all product cards with name, price, and image from this shopping page"
+  - Dynamic content: "Wait for the AJAX content to load, then extract the data"
 
 ### ❓ Help & Discovery Tools
 
@@ -494,45 +500,62 @@ Makes HTTP requests to URLs.
 **Returns:** HTTP response with status, headers, and body content.
 
 ### screen_scrape
-Extract structured data from web pages using advanced scraping techniques.
+Extract structured data from web pages using CSS selectors with advanced scraping capabilities.
 
 **Parameters:**
-- `url` (optional): URL to scrape (optional if page_id provided)
-- `page_id` (optional): Existing page ID to scrape (optional if url provided)
-- `selectors` (required): Key-value pairs where keys are field names and values are CSS selectors
-- `extract_type` (optional): Type of data to extract: 'single' for one item, 'multiple' for array of items (default: single)
-- `container_selector` (optional): Container selector for multiple items (required for extract_type=multiple)
-- `wait_for` (optional): CSS selector to wait for before scraping
-- `wait_timeout` (optional): Timeout in seconds to wait for elements (default: 10)
-- `include_metadata` (optional): Include page metadata (title, url, timestamp) (default: true)
-- `scroll_to_load` (optional): Scroll to bottom to trigger lazy loading (default: false)
-- `custom_script` (optional): Custom JavaScript to execute before scraping
+- `url` (optional): URL to scrape (optional if page_id provided). Example: 'https://example.com/products'
+- `page_id` (optional): Existing page ID to scrape from current browser session (optional if url provided). Use for already loaded pages
+- `selectors` (required): CSS selectors mapping field names to elements. Examples: {'title': 'h1', 'price': '.price-value', 'description': 'p.desc', 'link': 'a[href]', 'image': 'img[src]', 'rating': '[data-rating]'}
+- `extract_type` (optional): Extraction mode - 'single' for one item, 'multiple' for array using container_selector (default: single)
+- `container_selector` (required for multiple): Container selector for multiple items. Examples: '.product-card', 'article', '.search-result'
+- `wait_for` (optional): CSS selector to wait for before scraping (handles dynamic content). Examples: '.loading-complete', '[data-loaded=true]'
+- `wait_timeout` (optional): Maximum seconds to wait for elements (default: 10)
+- `include_metadata` (optional): Include page metadata (title, url, timestamp, extraction_time) (default: true)
+- `scroll_to_load` (optional): Auto-scroll to trigger lazy loading (infinite scroll, image loading) (default: false)
+- `custom_script` (optional): Custom JavaScript to execute before scraping. Examples: button clicks, view changes, content triggers
+
+**CSS Selector Support:** #id, .class, [attribute], tag, :nth-child(), :contains(), descendant combinators, complex selectors
 
 **Returns:** Structured data with extracted content, element attributes, and optional metadata.
 
 **Examples:**
 ```json
-// Single item extraction
+// Single item extraction - Product page
 {
   "url": "https://example.com/product/123",
   "selectors": {
     "title": "h1.product-title",
-    "price": ".price",
-    "description": ".product-description"
+    "price": ".price-current",
+    "description": ".product-description p",
+    "image": "img.hero-image",
+    "rating": "[data-rating]"
   }
 }
 
-// Multiple items extraction
+// Multiple items extraction - Product catalog
 {
-  "url": "https://news.example.com",
+  "url": "https://store.com/products",
   "extract_type": "multiple",
-  "container_selector": ".article",
+  "container_selector": ".product-card",
   "selectors": {
-    "headline": "h2",
-    "summary": ".excerpt",
-    "link": "a.read-more"
+    "name": ".product-name",
+    "price": ".price",
+    "link": "a[href]",
+    "image": "img[src]"
   },
   "scroll_to_load": true
+}
+
+// Dynamic content with wait and custom script
+{
+  "url": "https://spa-app.com/data",
+  "selectors": {
+    "content": ".ajax-loaded-content",
+    "status": ".loading-status"
+  },
+  "wait_for": ".loading-complete",
+  "wait_timeout": 15,
+  "custom_script": "document.querySelector('.load-more').click();"
 }
 ```
 
