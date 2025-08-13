@@ -271,10 +271,11 @@ if curl -s "http://localhost:$PORT/health" >/dev/null 2>&1; then
     echo "3. Start automating: 'Create a simple HTML page and take a screenshot'"
     echo
     print_status "To stop server: kill $SERVER_PID"
+    print_status "Server running in background - script will now exit"
     
-    # Keep script running to show PID
-    echo "Press Ctrl+C to stop the server..."
-    wait $SERVER_PID
+    # Detach from terminal and exit script
+    disown $SERVER_PID
+    echo "✅ RodMCP server running in background (PID: $SERVER_PID)"
 else
     print_error "Failed to start RodMCP server"
     kill $SERVER_PID 2>/dev/null || true
