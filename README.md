@@ -145,6 +145,33 @@ Watch RodMCP in action:
 
 This shows Claude creating an interactive webpage, opening it in a visible browser, clicking buttons, changing themes, and taking screenshots - all automated!
 
+## 🤖 Claude Code Integration
+
+**RodMCP works perfectly with Claude Code!** Get instant access to 19 web development tools:
+
+### Quick Setup
+```bash
+# 1. Install RodMCP
+git clone https://github.com/dgallion1/rodMcp.git && cd rodMcp && make install-local
+
+# 2. Start HTTP server for Claude Code
+./start-for-claude-code.sh
+
+# 3. Configure Claude Code (add to mcp-servers.json)
+{"mcpServers": {"rodmcp": {"url": "http://localhost:8090"}}}
+
+# 4. Restart Claude Code and ask: "What tools do you have available?"
+```
+
+**🎯 What You Get:**
+- 🌐 Complete HTML/CSS/JS page creation with live preview
+- 🖱️ Full browser automation (click, type, navigate, screenshot)
+- 🕷️ Advanced web scraping with CSS selectors
+- 📁 File system access for project management
+- 🌍 HTTP client for API testing
+
+See **[CLAUDE_CODE_INTEGRATION.md](CLAUDE_CODE_INTEGRATION.md)** for detailed setup, auto-start configuration, and troubleshooting.
+
 ## 📦 Quick Start
 
 ### 1. Get RodMCP

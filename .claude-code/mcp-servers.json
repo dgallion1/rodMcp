@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "rodmcp-web-automation": {
+      "url": "http://localhost:8090"
+    }
+  }
+}
