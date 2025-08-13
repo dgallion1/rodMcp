@@ -119,6 +119,9 @@ func main() {
 	mcpServer.RegisterTool(webtools.NewScrollTool(log, browserMgr))
 	mcpServer.RegisterTool(webtools.NewHoverElementTool(log, browserMgr))
 	
+	// Screen scraping tools
+	mcpServer.RegisterTool(webtools.NewScreenScrapeTool(log, browserMgr))
+	
 	// File system tools
 	mcpServer.RegisterTool(webtools.NewReadFileTool(log))
 	mcpServer.RegisterTool(webtools.NewWriteFileTool(log))
@@ -147,7 +150,7 @@ func main() {
 	// Send a log message to MCP client
 	mcpServer.SendLogMessage("info", "RodMCP server is ready for connections", map[string]interface{}{
 		"timestamp":        time.Now().UTC().Format(time.RFC3339),
-		"tools_registered": 18,
+		"tools_registered": 19,
 		"browser_config": map[string]interface{}{
 			"headless":      *headless,
 			"debug":         *debug,
@@ -245,6 +248,9 @@ func startHTTPServer() {
 	httpServer.RegisterTool(webtools.NewScrollTool(log, browserMgr))
 	httpServer.RegisterTool(webtools.NewHoverElementTool(log, browserMgr))
 	
+	// Screen scraping tools
+	httpServer.RegisterTool(webtools.NewScreenScrapeTool(log, browserMgr))
+	
 	// File system tools
 	httpServer.RegisterTool(webtools.NewReadFileTool(log))
 	httpServer.RegisterTool(webtools.NewWriteFileTool(log))
@@ -275,7 +281,7 @@ func startHTTPServer() {
 	httpServer.SendLogMessage("info", "RodMCP HTTP server is ready for connections", map[string]interface{}{
 		"timestamp":        time.Now().UTC().Format(time.RFC3339),
 		"port":            *port,
-		"tools_registered": 18,
+		"tools_registered": 19,
 		"browser_config": map[string]interface{}{
 			"headless":      *headless,
 			"debug":         *debug,
@@ -348,6 +354,9 @@ func getAllTools() map[string]mcp.Tool {
 	tools["scroll"] = webtools.NewScrollTool(log, browserMgr)
 	tools["hover_element"] = webtools.NewHoverElementTool(log, browserMgr)
 	
+	// Screen scraping tools
+	tools["screen_scrape"] = webtools.NewScreenScrapeTool(log, browserMgr)
+	
 	// File system tools
 	tools["read_file"] = webtools.NewReadFileTool(log)
 	tools["write_file"] = webtools.NewWriteFileTool(log)
@@ -415,7 +424,7 @@ For more information, see: https://github.com/your-org/rodmcp
 func listTools() {
 	fmt.Println("🛠️  RodMCP Available Tools")
 	fmt.Println("=" + strings.Repeat("=", 50))
-	fmt.Printf("Total: 18 comprehensive web development tools\n\n")
+	fmt.Printf("Total: 19 comprehensive web development tools\n\n")
 	
 	tools := getAllTools()
 	
@@ -428,6 +437,9 @@ func listTools() {
 		"🎯 Browser UI Control": {
 			"click_element", "type_text", "wait", "wait_for_element",
 			"get_element_text", "get_element_attribute", "scroll", "hover_element",
+		},
+		"🕷️ Screen Scraping": {
+			"screen_scrape",
 		},
 		"📁 File System": {
 			"read_file", "write_file", "list_directory",

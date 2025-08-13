@@ -7,7 +7,7 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 - 🤖 **Works with Claude** - Full MCP protocol support for seamless integration
 - 🔄 **Robust Connection Management** - Automatic reconnection and health monitoring prevents timeout errors
 - 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless (browser visibility fixed!)
-- 🛠️ **19 Comprehensive Tools** - Complete browser control + file system + HTTP requests + interactive help
+- 🛠️ **19 Comprehensive Tools** - Complete browser control + screen scraping + file system + HTTP requests + interactive help
 - 🏠 **Easy Install** - No sudo required with local user installation
 - 🚀 **Auto Go Install** - Makefile can install Go locally if not present
 - ⚡ **Go 1.24.5+ Performance** - Fast, reliable browser automation
@@ -89,6 +89,14 @@ Scroll the page by pixels or to specific elements
 Hover over elements to trigger hover effects
 - **Purpose**: Reveal dropdown menus or hover-triggered content
 - **Example**: "Hover over the navigation menu"
+
+### 🕷️ Screen Scraping Tools
+
+### 📊 `screen_scrape`
+Extract structured data from web pages using advanced scraping techniques
+- **Purpose**: Automated data extraction from websites and web applications
+- **Features**: Single & multiple item extraction, smart element detection, attribute extraction
+- **Example**: "Extract all product information from this e-commerce page" or "Scrape article titles and links from this news site"
 
 ### ❓ Help & Discovery Tools
 
@@ -242,7 +250,8 @@ While Playwright is excellent for traditional automation, RodMCP is **specifical
 - **Lower Resource Usage** - Rod's native Chrome integration vs Playwright's multiple browser engines
 
 ### 🛠️ **Complete Development Toolkit**
-- **19 Comprehensive Tools** - Browser automation + file system + HTTP + help system
+- **19 Comprehensive Tools** - Browser automation + screen scraping + file system + HTTP + help system
+- **Advanced Screen Scraping** - Single & multiple item extraction with smart element detection
 - **Integrated Web Server** - Built-in `live_preview` for instant development servers
 - **Page Creation Tools** - Generate complete HTML/CSS/JS pages directly
 - **Interactive Help System** - AI-guided tool discovery and workflow suggestions
@@ -310,9 +319,10 @@ RodMCP provides equivalent functionality with AI-optimized design:
 - **Screenshots** ✅ Built-in with flexible output options
 - **JavaScript Execution** ✅ Direct execution with result handling
 - **Form Testing** ✅ Type text + click elements seamlessly
+- **Data Extraction** ✅ Advanced screen scraping with single & multiple item support
 - **API Testing** ✅ Built-in HTTP request tools
 
-**The Bottom Line:** If you're working with AI agents like Claude, RodMCP delivers a **native, optimized experience** that Playwright MCP can't match. Built for AI from the ground up, not adapted afterward.
+**The Bottom Line:** If you're working with AI agents like Claude, RodMCP delivers a **native, optimized experience** that Playwright MCP can't match. Built for AI from the ground up with advanced screen scraping, not adapted afterward.
 
 ## 💡 Example Use Cases
 
@@ -341,11 +351,12 @@ go run comprehensive_suite.go
 - **📁 File System Tools** (4 tests): Write files with directory creation, read files, list directories, write JSON files
 - **🌐 Browser Automation** (4 tests): Create HTML pages, navigate to pages, take screenshots, execute JavaScript
 - **🖱️ UI Control Tools** (10 tests): Click elements, type text, wait operations, get element text/attributes, scroll, hover, form interactions
+- **🕷️ Screen Scraping Tools** (2 tests): Single item extraction, multiple item extraction with containers
 - **🌍 Network Tools** (3 tests): HTTP GET, POST with JSON, custom headers
 - **⚡ JavaScript Execution** (4 tests): Complex object returns, DOM manipulation, async operations, error handling
 
 **Features:**
-- ✅ **100% Success Rate** - All 25 tests pass
+- ✅ **100% Success Rate** - All 27 tests pass
 - ⏱️ **Performance Metrics** - Detailed timing for each operation
 - 📊 **Category Summaries** - Success rates per tool category
 - 🎯 **Comprehensive Coverage** - Tests every MCP tool with real scenarios
@@ -371,6 +382,18 @@ screen sizes. Show me how it looks on tablet and phone."
 preview server, and demonstrate all the features working."
 ```
 
+### 🕷️ Data Extraction & Analysis
+```
+"Navigate to this e-commerce site and extract all product names,
+prices, and ratings. Then analyze the pricing trends."
+```
+
+### 📊 Content Monitoring
+```
+"Scrape the latest articles from these news websites and 
+create a summary report with headlines and links."
+```
+
 ### 🎓 Learning Tool
 ```
 "Create an interactive CSS tutorial showing flexbox examples. 
@@ -383,6 +406,7 @@ Use visible browser mode so I can see each step."
 MCP Client ←→ JSON-RPC 2.0 ←→ MCP Server
                                     ├── Browser Automation Tools (6)
                                     ├── Browser UI Control Tools (8)
+                                    ├── Screen Scraping Tools (1)
                                     ├── File System Tools (3)  
                                     ├── Network Tools (1)
                                     ├── Help & Discovery Tools (1)
@@ -468,6 +492,49 @@ Makes HTTP requests to URLs.
 - `timeout` (optional): Request timeout in seconds (default: 30)
 
 **Returns:** HTTP response with status, headers, and body content.
+
+### screen_scrape
+Extract structured data from web pages using advanced scraping techniques.
+
+**Parameters:**
+- `url` (optional): URL to scrape (optional if page_id provided)
+- `page_id` (optional): Existing page ID to scrape (optional if url provided)
+- `selectors` (required): Key-value pairs where keys are field names and values are CSS selectors
+- `extract_type` (optional): Type of data to extract: 'single' for one item, 'multiple' for array of items (default: single)
+- `container_selector` (optional): Container selector for multiple items (required for extract_type=multiple)
+- `wait_for` (optional): CSS selector to wait for before scraping
+- `wait_timeout` (optional): Timeout in seconds to wait for elements (default: 10)
+- `include_metadata` (optional): Include page metadata (title, url, timestamp) (default: true)
+- `scroll_to_load` (optional): Scroll to bottom to trigger lazy loading (default: false)
+- `custom_script` (optional): Custom JavaScript to execute before scraping
+
+**Returns:** Structured data with extracted content, element attributes, and optional metadata.
+
+**Examples:**
+```json
+// Single item extraction
+{
+  "url": "https://example.com/product/123",
+  "selectors": {
+    "title": "h1.product-title",
+    "price": ".price",
+    "description": ".product-description"
+  }
+}
+
+// Multiple items extraction
+{
+  "url": "https://news.example.com",
+  "extract_type": "multiple",
+  "container_selector": ".article",
+  "selectors": {
+    "headline": "h2",
+    "summary": ".excerpt",
+    "link": "a.read-more"
+  },
+  "scroll_to_load": true
+}
+```
 
 ### help
 Get interactive help, usage examples, and workflow suggestions for rodmcp tools.

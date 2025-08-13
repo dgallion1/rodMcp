@@ -55,6 +55,24 @@ echo "✅ Build successful"
 # Install to local user directory
 INSTALL_PATH="$LOCAL_BIN/rodmcp"
 
+# Stop any running rodmcp processes before installation
+echo "🛑 Checking for running RodMCP processes..."
+if pgrep -f "rodmcp" > /dev/null; then
+    echo "⚠️  Found running RodMCP processes. Stopping them..."
+    pkill -f "rodmcp" || true
+    sleep 2
+    
+    # Check if any processes are still running and force kill if necessary
+    if pgrep -f "rodmcp" > /dev/null; then
+        echo "⚠️  Force stopping remaining processes..."
+        pkill -9 -f "rodmcp" || true
+        sleep 1
+    fi
+    echo "✅ RodMCP processes stopped"
+else
+    echo "✅ No running RodMCP processes found"
+fi
+
 echo "📦 Installing RodMCP to $INSTALL_PATH..."
 cp bin/rodmcp "$INSTALL_PATH"
 chmod +x "$INSTALL_PATH"

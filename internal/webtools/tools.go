@@ -2053,3 +2053,426 @@ func (t *HoverElementTool) Execute(args map[string]interface{}) (*types.CallTool
 		}},
 	}, nil
 }
+
+// ScreenScrapeTool provides comprehensive web scraping capabilities
+type ScreenScrapeTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewScreenScrapeTool(log *logger.Logger, mgr *browser.Manager) *ScreenScrapeTool {
+	return &ScreenScrapeTool{logger: log, browserMgr: mgr}
+}
+
+func (t *ScreenScrapeTool) Name() string {
+	return "screen_scrape"
+}
+
+func (t *ScreenScrapeTool) Description() string {
+	return "Extract structured data from web pages using advanced scraping techniques"
+}
+
+func (t *ScreenScrapeTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"url": map[string]interface{}{
+				"type":        "string",
+				"description": "URL to scrape (optional if page_id provided)",
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Existing page ID to scrape (optional if url provided)",
+			},
+			"selectors": map[string]interface{}{
+				"type":        "object",
+				"description": "Key-value pairs where keys are field names and values are CSS selectors",
+				"additionalProperties": map[string]interface{}{
+					"type": "string",
+				},
+			},
+			"extract_type": map[string]interface{}{
+				"type":        "string",
+				"description": "Type of data to extract: 'single' for one item, 'multiple' for array of items",
+				"enum":        []string{"single", "multiple"},
+				"default":     "single",
+			},
+			"container_selector": map[string]interface{}{
+				"type":        "string",
+				"description": "Container selector for multiple items (required for extract_type=multiple)",
+			},
+			"wait_for": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector to wait for before scraping",
+			},
+			"wait_timeout": map[string]interface{}{
+				"type":        "integer",
+				"description": "Timeout in seconds to wait for elements (default: 10)",
+				"default":     10,
+			},
+			"include_metadata": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Include page metadata (title, url, timestamp)",
+				"default":     true,
+			},
+			"scroll_to_load": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Scroll to bottom to trigger lazy loading",
+				"default":     false,
+			},
+			"custom_script": map[string]interface{}{
+				"type":        "string",
+				"description": "Custom JavaScript to execute before scraping",
+			},
+		},
+		Required: []string{"selectors"},
+	}
+}
+
+func (t *ScreenScrapeTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+
+	// Get or create page
+	pageID := ""
+	if val, ok := args["page_id"].(string); ok {
+		pageID = val
+	}
+
+	if pageID == "" {
+		url, hasURL := args["url"].(string)
+		if !hasURL || url == "" {
+			return nil, fmt.Errorf("either page_id or url must be provided")
+		}
+
+		// Create new page
+		_, newPageID, err := t.browserMgr.NewPage(url)
+		if err != nil {
+			return nil, fmt.Errorf("failed to navigate to %s: %w", url, err)
+		}
+		pageID = newPageID
+	}
+
+	// Wait for specific element if requested
+	if waitFor, ok := args["wait_for"].(string); ok && waitFor != "" {
+		timeout := 10
+		if val, ok := args["wait_timeout"].(float64); ok {
+			timeout = int(val)
+		}
+
+		waitScript := fmt.Sprintf(`
+			const maxWait = %d * 1000;
+			const startTime = Date.now();
+			
+			function checkElement() {
+				const element = document.querySelector('%s');
+				if (element) {
+					return true;
+				}
+				
+				if (Date.now() - startTime > maxWait) {
+					throw new Error('Timeout waiting for element: %s');
+				}
+				
+				return new Promise((resolve, reject) => {
+					setTimeout(() => {
+						try {
+							resolve(checkElement());
+						} catch (e) {
+							reject(e);
+						}
+					}, 100);
+				});
+			}
+			
+			return checkElement();
+		`, timeout, waitFor, waitFor)
+
+		if _, err := t.browserMgr.ExecuteScript(pageID, waitScript); err != nil {
+			return nil, fmt.Errorf("timeout waiting for element %s: %w", waitFor, err)
+		}
+	}
+
+	// Scroll to load content if requested
+	if scrollToLoad, ok := args["scroll_to_load"].(bool); ok && scrollToLoad {
+		scrollScript := `
+			return new Promise((resolve) => {
+				let scrollHeight = document.body.scrollHeight;
+				let scrolled = 0;
+				
+				function scrollStep() {
+					window.scrollTo(0, scrolled);
+					scrolled += window.innerHeight;
+					
+					if (scrolled >= scrollHeight) {
+						setTimeout(() => {
+							const newScrollHeight = document.body.scrollHeight;
+							if (newScrollHeight > scrollHeight) {
+								scrollHeight = newScrollHeight;
+								scrollStep();
+							} else {
+								resolve('Scroll completed');
+							}
+						}, 1000);
+					} else {
+						setTimeout(scrollStep, 500);
+					}
+				}
+				
+				scrollStep();
+			});
+		`
+
+		if _, err := t.browserMgr.ExecuteScript(pageID, scrollScript); err != nil {
+			t.logger.WithComponent("tools").Warn("Scroll to load failed",
+				zap.Error(err))
+		}
+	}
+
+	// Execute custom script if provided
+	if customScript, ok := args["custom_script"].(string); ok && customScript != "" {
+		if _, err := t.browserMgr.ExecuteScript(pageID, customScript); err != nil {
+			t.logger.WithComponent("tools").Warn("Custom script execution failed",
+				zap.Error(err))
+		}
+	}
+
+	// Get selectors
+	selectors, ok := args["selectors"].(map[string]interface{})
+	if !ok || len(selectors) == 0 {
+		return nil, fmt.Errorf("selectors must be provided as key-value pairs")
+	}
+
+	extractType := "single"
+	if val, ok := args["extract_type"].(string); ok {
+		extractType = val
+	}
+
+	var result interface{}
+	var err error
+
+	if extractType == "multiple" {
+		result, err = t.scrapeMultiple(pageID, selectors, args)
+	} else {
+		result, err = t.scrapeSingle(pageID, selectors)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("scraping failed: %w", err)
+	}
+
+	// Add metadata if requested
+	includeMetadata := true
+	if val, ok := args["include_metadata"].(bool); ok {
+		includeMetadata = val
+	}
+
+	var responseData map[string]interface{}
+	if includeMetadata {
+		pageInfo, _ := t.browserMgr.GetPageInfo(pageID)
+		responseData = map[string]interface{}{
+			"data":      result,
+			"metadata":  pageInfo,
+			"timestamp": time.Now().Format(time.RFC3339Nano),
+			"page_id":   pageID,
+		}
+	} else {
+		responseData = map[string]interface{}{
+			"data": result,
+		}
+	}
+
+	duration := time.Since(start).Milliseconds()
+	t.logger.WithComponent("tools").Info("Screen scraping completed",
+		zap.String("page_id", pageID),
+		zap.String("extract_type", extractType),
+		zap.Int("selectors_count", len(selectors)),
+		zap.Int64("duration_ms", duration))
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("Successfully scraped %d fields using %s extraction", len(selectors), extractType),
+			Data: responseData,
+		}},
+	}, nil
+}
+
+func (t *ScreenScrapeTool) scrapeSingle(pageID string, selectors map[string]interface{}) (map[string]interface{}, error) {
+	result := make(map[string]interface{})
+
+	for fieldName, selectorInterface := range selectors {
+		selector, ok := selectorInterface.(string)
+		if !ok {
+			continue
+		}
+
+		script := fmt.Sprintf(`
+			const element = document.querySelector('%s');
+			if (!element) {
+				return null;
+			}
+
+			// Extract different types of data based on element type
+			const tagName = element.tagName.toLowerCase();
+			let value = null;
+
+			if (tagName === 'img') {
+				value = {
+					src: element.src || element.getAttribute('src'),
+					alt: element.alt || element.getAttribute('alt'),
+					title: element.title || element.getAttribute('title')
+				};
+			} else if (tagName === 'a') {
+				value = {
+					href: element.href || element.getAttribute('href'),
+					text: element.textContent || element.innerText,
+					title: element.title || element.getAttribute('title')
+				};
+			} else if (tagName === 'input') {
+				value = {
+					type: element.type,
+					value: element.value,
+					placeholder: element.placeholder
+				};
+			} else if (element.hasAttribute('data-value')) {
+				value = element.getAttribute('data-value');
+			} else {
+				value = element.textContent || element.innerText || '';
+			}
+
+			return {
+				value: value,
+				attributes: {
+					class: element.className,
+					id: element.id,
+					tagName: tagName
+				}
+			};
+		`, selector)
+
+		data, err := t.browserMgr.ExecuteScript(pageID, script)
+		if err != nil {
+			t.logger.WithComponent("tools").Warn("Failed to scrape field",
+				zap.String("field", fieldName),
+				zap.String("selector", selector),
+				zap.Error(err))
+			result[fieldName] = nil
+			continue
+		}
+
+		result[fieldName] = data
+	}
+
+	return result, nil
+}
+
+func (t *ScreenScrapeTool) scrapeMultiple(pageID string, selectors map[string]interface{}, args map[string]interface{}) ([]map[string]interface{}, error) {
+	containerSelector, ok := args["container_selector"].(string)
+	if !ok || containerSelector == "" {
+		return nil, fmt.Errorf("container_selector is required for multiple extraction")
+	}
+
+	// Build the scraping script for multiple items
+	var selectorPairs []string
+	for fieldName, selectorInterface := range selectors {
+		if selector, ok := selectorInterface.(string); ok {
+			selectorPairs = append(selectorPairs, fmt.Sprintf(`'%s': '%s'`, fieldName, selector))
+		}
+	}
+
+	script := fmt.Sprintf(`
+		const containers = document.querySelectorAll('%s');
+		const selectors = {%s};
+		const results = [];
+
+		containers.forEach((container, index) => {
+			const item = {};
+
+			Object.keys(selectors).forEach(fieldName => {
+				const selector = selectors[fieldName];
+				const element = container.querySelector(selector);
+
+				if (!element) {
+					item[fieldName] = null;
+					return;
+				}
+
+				const tagName = element.tagName.toLowerCase();
+				let value = null;
+
+				if (tagName === 'img') {
+					value = {
+						src: element.src || element.getAttribute('src'),
+						alt: element.alt || element.getAttribute('alt'),
+						title: element.title || element.getAttribute('title')
+					};
+				} else if (tagName === 'a') {
+					value = {
+						href: element.href || element.getAttribute('href'),
+						text: element.textContent || element.innerText,
+						title: element.title || element.getAttribute('title')
+					};
+				} else if (tagName === 'input') {
+					value = {
+						type: element.type,
+						value: element.value,
+						placeholder: element.placeholder
+					};
+				} else if (element.hasAttribute('data-value')) {
+					value = element.getAttribute('data-value');
+				} else {
+					value = element.textContent || element.innerText || '';
+				}
+
+				item[fieldName] = {
+					value: value,
+					attributes: {
+						class: element.className,
+						id: element.id,
+						tagName: tagName
+					}
+				};
+			});
+
+			item._index = index;
+			results.push(item);
+		});
+
+		return results;
+	`, containerSelector, strings.Join(selectorPairs, ", "))
+
+	data, err := t.browserMgr.ExecuteScript(pageID, script)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute multiple scraping script: %w", err)
+	}
+
+	// Debug log the data type
+	t.logger.WithComponent("tools").Debug("Scraping script returned data",
+		zap.String("type", fmt.Sprintf("%T", data)),
+		zap.Any("data", data))
+
+	// Convert the result to the expected format
+	// Rod might return different data types, handle various cases
+	switch v := data.(type) {
+	case []interface{}:
+		var result []map[string]interface{}
+		for _, item := range v {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				result = append(result, itemMap)
+			}
+		}
+		return result, nil
+	case []map[string]interface{}:
+		return v, nil
+	case interface{}:
+		// Try to convert to JSON and back to handle go-rod's gson types
+		if jsonBytes, err := json.Marshal(v); err == nil {
+			var result []map[string]interface{}
+			if err := json.Unmarshal(jsonBytes, &result); err == nil {
+				return result, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("unexpected data format returned from scraping script: %T", data)
+}
