@@ -4,6 +4,7 @@
 # Project configuration
 PROJECT_NAME := rodmcp
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Go configuration
@@ -52,7 +53,7 @@ LOCAL_BIN := $(HOME)/.local/bin
 SYSTEM_BIN := /usr/local/bin
 
 # Go build flags
-LDFLAGS := -ldflags "-X main.Version=$(VERSION) -X main.BuildDate=$(BUILD_DATE) -X main.GoVersion=$(GO_VERSION)"
+LDFLAGS := -ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.BuildDate=$(BUILD_DATE)"
 BUILD_FLAGS := -trimpath $(LDFLAGS)
 
 # Go installation URLs (adjust for different OS/arch as needed)
@@ -404,6 +405,7 @@ update-deps: check-go-available
 version:
 	@echo "$(CYAN)$(PROJECT_NAME) Build Information:$(NC)"
 	@echo "  Version:    $(VERSION)"
+	@echo "  Commit:     $(COMMIT)"
 	@echo "  Build Date: $(BUILD_DATE)"
 	@echo "  Go Version: $(GO_VERSION)"
 

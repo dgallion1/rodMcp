@@ -19,10 +19,20 @@ import (
 	"go.uber.org/zap"
 )
 
+// Version information (set during build)
+var (
+	Version   = "1.0.0-dev"  // Default version, can be overridden at build time
+	Commit    = "unknown"    // Git commit hash
+	BuildDate = "unknown"    // Build timestamp
+)
+
 func main() {
 	// Check for subcommands first
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "version", "-v", "--version":
+			showVersion()
+			return
 		case "list-tools", "tools":
 			listTools()
 			return
@@ -76,7 +86,8 @@ func main() {
 	defer log.Sync()
 
 	log.Info("Starting RodMCP server",
-		zap.String("version", "1.0.0"),
+		zap.String("version", Version),
+		zap.String("commit", Commit),
 		zap.String("log_level", *logLevel),
 		zap.Bool("headless", *headless))
 
@@ -208,6 +219,8 @@ func startHTTPServer() {
 	defer log.Sync()
 
 	log.Info("Starting RodMCP HTTP server",
+		zap.String("version", Version),
+		zap.String("commit", Commit),
 		zap.Int("port", *port),
 		zap.String("log_level", *logLevel),
 		zap.Bool("headless", *headless))
@@ -371,6 +384,18 @@ func getAllTools() map[string]mcp.Tool {
 	return tools
 }
 
+func showVersion() {
+	fmt.Printf("RodMCP %s\n", Version)
+	if Commit != "unknown" {
+		fmt.Printf("Git commit: %s\n", Commit)
+	}
+	if BuildDate != "unknown" {
+		fmt.Printf("Build date: %s\n", BuildDate)
+	}
+	fmt.Printf("Go version: %s\n", "1.24.5+")
+	fmt.Printf("MCP protocol version: 2024-11-05\n")
+}
+
 func showHelp() {
 	fmt.Printf(`RodMCP - Model Context Protocol Server for Web Development
 
@@ -379,6 +404,7 @@ USAGE:
 
 COMMANDS:
     (no command)       Start MCP server (default)
+    version           Show version information
     http              Start HTTP-based MCP server
     list-tools, tools  List all available MCP tools
     describe-tool NAME Show detailed documentation for a specific tool

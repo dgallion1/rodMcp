@@ -34,12 +34,64 @@ print_error() {
     echo -e "${RED}[RodMCP]${NC} ❌ $1"
 }
 
-# Check if binary exists
-if [[ ! -f "$RODMCP_BIN" ]]; then
-    print_error "RodMCP binary not found at $RODMCP_BIN"
-    print_status "Run 'make build' or 'make install-local' first"
-    exit 1
-fi
+# Check and update RodMCP
+check_and_update_rodmcp() {
+    if [[ ! -f "$RODMCP_BIN" ]]; then
+        print_error "RodMCP binary not found at $RODMCP_BIN"
+        print_status "Building RodMCP..."
+        cd "$SCRIPT_DIR"
+        if make install-local; then
+            print_success "RodMCP built and installed successfully"
+        else
+            print_error "Failed to build RodMCP"
+            exit 1
+        fi
+        return
+    fi
+    
+    # Check if we're in a git repository and can update
+    if [[ -d "$SCRIPT_DIR/.git" ]]; then
+        print_status "Checking for RodMCP updates..."
+        cd "$SCRIPT_DIR"
+        
+        # Show current version
+        if [[ -x "$RODMCP_BIN" ]]; then
+            local current_version=$("$RODMCP_BIN" version 2>/dev/null | head -1 | cut -d' ' -f2 || echo "unknown")
+            print_status "Current version: $current_version"
+        fi
+        
+        # Fetch latest changes
+        if git fetch origin master --quiet 2>/dev/null; then
+            local local_commit=$(git rev-parse HEAD)
+            local remote_commit=$(git rev-parse origin/master 2>/dev/null || echo "$local_commit")
+            
+            if [[ "$local_commit" != "$remote_commit" ]]; then
+                local commits_behind=$(git rev-list --count HEAD..origin/master 2>/dev/null || echo "unknown")
+                print_status "Updates available! ($commits_behind commits behind)"
+                print_status "Updating RodMCP..."
+                
+                # Stop any running rodmcp processes before update
+                pkill -f "rodmcp.*http" 2>/dev/null || true
+                sleep 1
+                
+                if git pull origin master --quiet && make install-local; then
+                    local new_version=$("$RODMCP_BIN" version 2>/dev/null | head -1 | cut -d' ' -f2 || echo "unknown")
+                    print_success "RodMCP updated to version $new_version"
+                else
+                    print_error "Failed to update RodMCP, continuing with current version"
+                fi
+            else
+                print_status "RodMCP is up to date"
+            fi
+        else
+            print_status "Cannot check for updates (offline or no remote)"
+        fi
+    else
+        print_status "Not a git repository, skipping update check"
+    fi
+}
+
+check_and_update_rodmcp
 
 # Check if port is already in use
 if command -v lsof >/dev/null 2>&1; then
@@ -102,21 +154,62 @@ SERVER_PID=$!
 # Wait a moment for server to start
 sleep 2
 
+# Update Claude Code MCP configuration
+update_claude_config() {
+    local config_dir="$HOME/.config/claude-code"
+    local config_file="$config_dir/mcp-servers.json"
+    
+    # Create config directory if it doesn't exist
+    if [[ ! -d "$config_dir" ]]; then
+        mkdir -p "$config_dir"
+        print_status "Created Claude Code config directory: $config_dir"
+    fi
+    
+    # Create or update MCP servers configuration
+    local server_config="{
+  \"mcpServers\": {
+    \"rodmcp-web-automation\": {
+      \"url\": \"http://localhost:$PORT\"
+    }
+  }
+}"
+    
+    if [[ -f "$config_file" ]]; then
+        # Backup existing config
+        cp "$config_file" "$config_file.backup"
+        print_status "Backed up existing config to: $config_file.backup"
+        
+        # Check if rodmcp is already configured
+        if grep -q "rodmcp" "$config_file"; then
+            print_status "RodMCP already configured, updating port to $PORT"
+        else
+            print_status "Adding RodMCP to existing Claude Code configuration"
+        fi
+    else
+        print_status "Creating new Claude Code MCP configuration"
+    fi
+    
+    echo "$server_config" > "$config_file"
+    print_success "Updated Claude Code configuration: $config_file"
+}
+
 # Check if server started successfully
 if curl -s "http://localhost:$PORT/health" >/dev/null 2>&1; then
     print_success "RodMCP HTTP server started successfully!"
     print_success "PID: $SERVER_PID"
     print_success "Health check: http://localhost:$PORT/health"
-    print_success "Ready for Claude Code integration"
     
+    # Update Claude Code configuration
+    update_claude_config
+    
+    print_success "Ready for Claude Code integration!"
     echo
     print_status "Next steps:"
-    echo "1. Configure Claude Code with:"
-    echo "   {\"mcpServers\": {\"rodmcp\": {\"url\": \"http://localhost:$PORT\"}}}"
-    echo "2. Restart Claude Code"
-    echo "3. Ask Claude: 'What tools do you have available?'"
+    echo "1. Restart Claude Code (if running): pkill claude-code && claude-code"
+    echo "2. Ask Claude: 'What tools do you have available?'"
+    echo "3. Start automating: 'Create a simple HTML page and take a screenshot'"
     echo
-    print_status "To stop: kill $SERVER_PID"
+    print_status "To stop server: kill $SERVER_PID"
     
     # Keep script running to show PID
     echo "Press Ctrl+C to stop the server..."
