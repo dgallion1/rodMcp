@@ -56,7 +56,7 @@ check_and_update_rodmcp() {
         
         # Show current version
         if [[ -x "$RODMCP_BIN" ]]; then
-            local current_version=$("$RODMCP_BIN" version 2>/dev/null | head -1 | cut -d' ' -f2 || echo "unknown")
+            local current_version=$(timeout 3 "$RODMCP_BIN" version 2>/dev/null | head -1 | cut -d' ' -f2 2>/dev/null || echo "unknown")
             print_status "Current version: $current_version"
         fi
         
@@ -75,7 +75,7 @@ check_and_update_rodmcp() {
                 sleep 1
                 
                 if git pull origin master --quiet && make install-local; then
-                    local new_version=$("$RODMCP_BIN" version 2>/dev/null | head -1 | cut -d' ' -f2 || echo "unknown")
+                    local new_version=$(timeout 3 "$RODMCP_BIN" version 2>/dev/null | head -1 | cut -d' ' -f2 2>/dev/null || echo "unknown")
                     print_success "RodMCP updated to version $new_version"
                 else
                     print_error "Failed to update RodMCP, continuing with current version"
@@ -93,16 +93,51 @@ check_and_update_rodmcp() {
 
 check_and_update_rodmcp
 
-# Check if port is already in use
+# Stop any existing RodMCP processes
+stop_existing_rodmcp() {
+    print_status "Stopping any existing RodMCP processes..."
+    
+    # Find RodMCP processes (exclude this script)
+    local pids=$(pgrep -f "rodmcp.*http" 2>/dev/null | grep -v $$ || true)
+    
+    if [[ -n "$pids" ]]; then
+        print_status "Found existing RodMCP processes: $pids"
+        for pid in $pids; do
+            if kill -0 $pid 2>/dev/null; then
+                local cmdline=$(ps -p $pid -o args= 2>/dev/null || true)
+                print_status "Stopping process $pid: $cmdline"
+                kill -TERM $pid 2>/dev/null || true
+                
+                # Wait up to 5 seconds for graceful shutdown
+                local count=0
+                while kill -0 $pid 2>/dev/null && [ $count -lt 50 ]; do
+                    sleep 0.1
+                    count=$((count + 1))
+                done
+                
+                # Force kill if still running
+                if kill -0 $pid 2>/dev/null; then
+                    print_status "Force killing process $pid..."
+                    kill -KILL $pid 2>/dev/null || true
+                fi
+            fi
+        done
+        print_success "Existing RodMCP processes stopped"
+    else
+        print_status "No existing RodMCP processes found"
+    fi
+    
+    # Clean up any stale lock files or temp files
+    rm -f /tmp/rodmcp-*.* 2>/dev/null || true
+}
+
+# Check if port is already in use by non-RodMCP service
 if command -v lsof >/dev/null 2>&1; then
     if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null 2>&1; then
-        print_warning "Port $PORT is already in use"
-        print_status "Checking if it's RodMCP..."
-        
-        if curl -s "http://localhost:$PORT/health" | grep -q "rodmcp\|tools"; then
-            print_success "RodMCP is already running on port $PORT"
-            print_status "Server ready for Claude Code at: http://localhost:$PORT"
-            exit 0
+        # Check if it's a RodMCP process
+        port_pid=$(lsof -ti :$PORT)
+        if ps -p $port_pid -o args= 2>/dev/null | grep -q "rodmcp"; then
+            print_status "RodMCP already using port $PORT, will restart it"
         else
             print_error "Another service is using port $PORT"
             print_status "Kill it or use: RODMCP_PORT=8091 $0"
@@ -110,6 +145,9 @@ if command -v lsof >/dev/null 2>&1; then
         fi
     fi
 fi
+
+# Always stop existing processes before starting
+stop_existing_rodmcp
 
 print_status "Starting RodMCP HTTP server for Claude Code integration..."
 print_status "Port: $PORT"
