@@ -3895,3 +3895,415 @@ func (t *AssertElementTool) performAssertion(pageID, selector, assertion, expect
 
 	return t.browserMgr.ExecuteScript(pageID, script)
 }
+
+// ExtractTableTool extracts structured data from HTML tables
+type ExtractTableTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewExtractTableTool(log *logger.Logger, browserMgr *browser.Manager) *ExtractTableTool {
+	return &ExtractTableTool{
+		logger:     log,
+		browserMgr: browserMgr,
+	}
+}
+
+func (t *ExtractTableTool) Name() string {
+	return "extract_table"
+}
+
+func (t *ExtractTableTool) Description() string {
+	return "Extract structured data from HTML tables with support for headers, filtering, and multiple formats"
+}
+
+func (t *ExtractTableTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"selector": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector for the table element (e.g., 'table', '#data-table', '.results tbody')",
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Page ID to extract from (optional, uses current page if not specified)",
+			},
+			"include_headers": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Include table headers in the output (default: true)",
+				"default":     true,
+			},
+			"output_format": map[string]interface{}{
+				"type":        "string",
+				"description": "Output format: 'array' (array of arrays), 'objects' (array of objects with header keys), 'csv' (CSV string)",
+				"enum":        []string{"array", "objects", "csv"},
+				"default":     "objects",
+			},
+			"skip_empty_rows": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Skip rows that are completely empty (default: true)",
+				"default":     true,
+			},
+			"max_rows": map[string]interface{}{
+				"type":        "integer",
+				"description": "Maximum number of rows to extract (default: no limit)",
+				"minimum":     1,
+			},
+			"column_filter": map[string]interface{}{
+				"type":        "array",
+				"description": "Array of column indices or header names to include (default: all columns)",
+				"items": map[string]interface{}{
+					"oneOf": []map[string]interface{}{
+						{"type": "integer"},
+						{"type": "string"},
+					},
+				},
+			},
+			"header_row": map[string]interface{}{
+				"type":        "integer",
+				"description": "Row index to use as headers (0-based, default: 0 for first row)",
+				"default":     0,
+				"minimum":     0,
+			},
+		},
+		Required: []string{"selector"},
+	}
+}
+
+func (t *ExtractTableTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Milliseconds()
+		t.logger.LogToolExecution(t.Name(), args, true, duration)
+	}()
+
+	// Add timeout protection
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Parse arguments
+	selector, ok := args["selector"].(string)
+	if !ok {
+		return nil, fmt.Errorf("selector is required")
+	}
+
+	pageID, _ := args["page_id"].(string)
+	
+	includeHeaders := true
+	if val, ok := args["include_headers"].(bool); ok {
+		includeHeaders = val
+	}
+
+	outputFormat := "objects"
+	if val, ok := args["output_format"].(string); ok {
+		outputFormat = val
+	}
+
+	skipEmptyRows := true
+	if val, ok := args["skip_empty_rows"].(bool); ok {
+		skipEmptyRows = val
+	}
+
+	var maxRows *int
+	if val, ok := args["max_rows"].(float64); ok {
+		maxRowsInt := int(val)
+		maxRows = &maxRowsInt
+	}
+
+	var columnFilter []interface{}
+	if val, ok := args["column_filter"].([]interface{}); ok {
+		columnFilter = val
+	}
+
+	headerRow := 0
+	if val, ok := args["header_row"].(float64); ok {
+		headerRow = int(val)
+	}
+
+	// Execute extraction in goroutine with timeout
+	resultChan := make(chan *types.CallToolResponse, 1)
+	errorChan := make(chan error, 1)
+
+	go func() {
+		result, err := t.extractTableData(pageID, selector, includeHeaders, outputFormat, skipEmptyRows, maxRows, columnFilter, headerRow)
+		if err != nil {
+			errorChan <- err
+			return
+		}
+		resultChan <- result
+	}()
+
+	// Wait for result or timeout
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("extract_table operation timed out after 30 seconds")
+	case err := <-errorChan:
+		return nil, err
+	case result := <-resultChan:
+		return result, nil
+	}
+}
+
+func (t *ExtractTableTool) extractTableData(pageID, selector string, includeHeaders bool, outputFormat string, skipEmptyRows bool, maxRows *int, columnFilter []interface{}, headerRow int) (*types.CallToolResponse, error) {
+	// Build JavaScript for table extraction
+	script := fmt.Sprintf(`
+		// Extract table data with comprehensive options
+		const table = document.querySelector('%s');
+		if (!table) {
+			return { error: 'Table not found with selector: %s' };
+		}
+
+		// Get all rows from table
+		let rows = [];
+		if (table.tagName === 'TABLE') {
+			// Full table - get all rows from tbody, thead, or directly from table
+			const tbody = table.querySelector('tbody');
+			const thead = table.querySelector('thead');
+			
+			if (thead) {
+				rows = rows.concat(Array.from(thead.querySelectorAll('tr')));
+			}
+			if (tbody) {
+				rows = rows.concat(Array.from(tbody.querySelectorAll('tr')));
+			} else {
+				// No tbody, get direct tr children
+				rows = Array.from(table.querySelectorAll('tr'));
+			}
+		} else {
+			// Selector points to tbody, thead, or other container
+			rows = Array.from(table.querySelectorAll('tr'));
+		}
+
+		if (rows.length === 0) {
+			return { error: 'No rows found in table' };
+		}
+
+		// Extract cell data from rows
+		const rawData = rows.map((row, rowIndex) => {
+			const cells = Array.from(row.querySelectorAll('td, th'));
+			return cells.map(cell => {
+				// Get text content, handling nested elements
+				let text = cell.textContent || cell.innerText || '';
+				text = text.trim();
+				
+				// Check for special attributes
+				const href = cell.querySelector('a')?.href;
+				const src = cell.querySelector('img')?.src;
+				const value = cell.querySelector('input')?.value;
+				
+				// Return enhanced cell data
+				const cellData = { text: text };
+				if (href) cellData.link = href;
+				if (src) cellData.image = src;
+				if (value !== undefined) cellData.input_value = value;
+				
+				return cellData;
+			});
+		});
+
+		// Apply row filtering
+		let filteredData = rawData;
+		
+		// Skip empty rows if requested
+		const skipEmpty = %t;
+		if (skipEmpty) {
+			filteredData = filteredData.filter(row => 
+				row.some(cell => cell.text && cell.text.length > 0)
+			);
+		}
+
+		// Apply max rows limit
+		const maxRowsLimit = %s;
+		if (maxRowsLimit !== null) {
+			filteredData = filteredData.slice(0, maxRowsLimit);
+		}
+
+		// Determine headers
+		const headerRowIndex = %d;
+		const includeHeaders = %t;
+		let headers = [];
+		
+		if (includeHeaders && filteredData.length > headerRowIndex) {
+			headers = filteredData[headerRowIndex].map(cell => cell.text);
+		}
+
+		// Apply column filtering
+		const columnFilterList = %s;
+		let columnIndices = null;
+		if (columnFilterList && columnFilterList.length > 0) {
+			columnIndices = [];
+			for (const filter of columnFilterList) {
+				if (typeof filter === 'number') {
+					columnIndices.push(filter);
+				} else if (typeof filter === 'string' && headers.length > 0) {
+					// Find column by header name
+					const index = headers.indexOf(filter);
+					if (index !== -1) {
+						columnIndices.push(index);
+					}
+				}
+			}
+		}
+
+		// Process data based on output format
+		const outputFormat = '%s';
+		let processedData;
+		
+		if (outputFormat === 'array') {
+			// Array of arrays format
+			processedData = filteredData.map(row => {
+				let rowData = row.map(cell => cell.text);
+				if (columnIndices) {
+					rowData = columnIndices.map(i => rowData[i] || '');
+				}
+				return rowData;
+			});
+		} else if (outputFormat === 'objects') {
+			// Array of objects format
+			if (headers.length === 0) {
+				// Generate default headers
+				const maxCols = Math.max(...filteredData.map(row => row.length));
+				headers = Array.from({length: maxCols}, (_, i) => 'column_' + i);
+			}
+			
+			const dataRows = includeHeaders ? filteredData.slice(headerRowIndex + 1) : filteredData;
+			processedData = dataRows.map(row => {
+				const obj = {};
+				let workingHeaders = headers;
+				if (columnIndices) {
+					workingHeaders = columnIndices.map(i => headers[i] || 'column_' + i);
+				}
+				
+				workingHeaders.forEach((header, index) => {
+					const cellIndex = columnIndices ? columnIndices[index] : index;
+					const cell = row[cellIndex];
+					if (cell) {
+						obj[header] = cell.text;
+						// Include additional data if present
+						if (cell.link) obj[header + '_link'] = cell.link;
+						if (cell.image) obj[header + '_image'] = cell.image;
+						if (cell.input_value !== undefined) obj[header + '_value'] = cell.input_value;
+					} else {
+						obj[header] = '';
+					}
+				});
+				return obj;
+			});
+		} else if (outputFormat === 'csv') {
+			// CSV string format
+			const csvRows = [];
+			
+			// Add headers if included
+			if (includeHeaders && headers.length > 0) {
+				let headerRow = headers;
+				if (columnIndices) {
+					headerRow = columnIndices.map(i => headers[i] || 'column_' + i);
+				}
+				csvRows.push(headerRow.map(h => '"' + h.replace(/"/g, '""') + '"').join(','));
+			}
+			
+			// Add data rows
+			const dataRows = includeHeaders ? filteredData.slice(headerRowIndex + 1) : filteredData;
+			dataRows.forEach(row => {
+				let csvRow = row.map(cell => cell.text);
+				if (columnIndices) {
+					csvRow = columnIndices.map(i => csvRow[i] || '');
+				}
+				csvRows.push(csvRow.map(text => '"' + (text || '').replace(/"/g, '""') + '"').join(','));
+			});
+			
+			processedData = csvRows.join('\n');
+		}
+
+		return {
+			success: true,
+			data: processedData,
+			metadata: {
+				total_rows: filteredData.length,
+				total_columns: filteredData.length > 0 ? filteredData[0].length : 0,
+				headers: headers,
+				output_format: outputFormat,
+				table_selector: '%s'
+			}
+		};
+	`,
+	strings.ReplaceAll(selector, "'", "\\'"),
+	strings.ReplaceAll(selector, "'", "\\'"),
+	skipEmptyRows,
+	func() string { if maxRows != nil { return fmt.Sprintf("%d", *maxRows) } else { return "null" } }(),
+	headerRow,
+	includeHeaders,
+	func() string { 
+		if columnFilter != nil { 
+			filterJSON, _ := json.Marshal(columnFilter)
+			return string(filterJSON)
+		} else { 
+			return "null" 
+		} 
+	}(),
+	outputFormat,
+	strings.ReplaceAll(selector, "'", "\\'"))
+
+	result, err := t.browserMgr.ExecuteScript(pageID, script)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract table data: %w", err)
+	}
+
+	// Parse the JavaScript result
+	var jsResult map[string]interface{}
+	resultStr, ok := result.(string)
+	if !ok {
+		return nil, fmt.Errorf("unexpected result type from JavaScript execution")
+	}
+	if err := json.Unmarshal([]byte(resultStr), &jsResult); err != nil {
+		return nil, fmt.Errorf("failed to parse table extraction result: %w", err)
+	}
+
+	// Check for extraction errors
+	if errorMsg, exists := jsResult["error"]; exists {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Table extraction failed: %v", errorMsg),
+			}},
+		}, nil
+	}
+
+	// Format successful response
+	data := jsResult["data"]
+	metadata := jsResult["metadata"]
+
+	var responseText string
+	switch outputFormat {
+	case "csv":
+		responseText = fmt.Sprintf("Table extracted as CSV:\n\n%v", data)
+	case "array":
+		dataJSON, _ := json.MarshalIndent(data, "", "  ")
+		responseText = fmt.Sprintf("Table extracted as array:\n\n%s", string(dataJSON))
+	case "objects":
+		dataJSON, _ := json.MarshalIndent(data, "", "  ")
+		responseText = fmt.Sprintf("Table extracted as objects:\n\n%s", string(dataJSON))
+	}
+
+	// Add metadata info
+	if meta, ok := metadata.(map[string]interface{}); ok {
+		responseText += fmt.Sprintf("\n\nMetadata:\n- Rows: %v\n- Columns: %v\n- Format: %v", 
+			meta["total_rows"], meta["total_columns"], meta["output_format"])
+		if headers, ok := meta["headers"].([]interface{}); ok && len(headers) > 0 {
+			responseText += fmt.Sprintf("\n- Headers: %v", headers)
+		}
+	}
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: responseText,
+			Data: map[string]interface{}{
+				"table_data": data,
+				"metadata":   metadata,
+				"format":     outputFormat,
+			},
+		}},
+	}, nil
+}

@@ -132,6 +132,7 @@ func main() {
 	
 	// Screen scraping tools
 	mcpServer.RegisterTool(webtools.NewScreenScrapeTool(log, browserMgr))
+	mcpServer.RegisterTool(webtools.NewExtractTableTool(log, browserMgr))
 	
 	// Form automation tools
 	mcpServer.RegisterTool(webtools.NewFormFillTool(log, browserMgr))
@@ -170,7 +171,7 @@ func main() {
 	// Send a log message to MCP client
 	mcpServer.SendLogMessage("info", "RodMCP server is ready for connections", map[string]interface{}{
 		"timestamp":        time.Now().UTC().Format(time.RFC3339),
-		"tools_registered": 19,
+		"tools_registered": 23,
 		"browser_config": map[string]interface{}{
 			"headless":      *headless,
 			"debug":         *debug,
@@ -272,6 +273,7 @@ func startHTTPServer() {
 	
 	// Screen scraping tools
 	httpServer.RegisterTool(webtools.NewScreenScrapeTool(log, browserMgr))
+	httpServer.RegisterTool(webtools.NewExtractTableTool(log, browserMgr))
 	
 	// Form automation tools
 	httpServer.RegisterTool(webtools.NewFormFillTool(log, browserMgr))
@@ -312,7 +314,7 @@ func startHTTPServer() {
 	httpServer.SendLogMessage("info", "RodMCP HTTP server is ready for connections", map[string]interface{}{
 		"timestamp":        time.Now().UTC().Format(time.RFC3339),
 		"port":            *port,
-		"tools_registered": 19,
+		"tools_registered": 23,
 		"browser_config": map[string]interface{}{
 			"headless":      *headless,
 			"debug":         *debug,
@@ -387,6 +389,7 @@ func getAllTools() map[string]mcp.Tool {
 	
 	// Screen scraping tools
 	tools["screen_scrape"] = webtools.NewScreenScrapeTool(log, browserMgr)
+	tools["extract_table"] = webtools.NewExtractTableTool(log, browserMgr)
 	
 	// Form automation tools
 	tools["form_fill"] = webtools.NewFormFillTool(log, browserMgr)
@@ -477,7 +480,7 @@ For more information, see: https://github.com/your-org/rodmcp
 func listTools() {
 	fmt.Println("🛠️  RodMCP Available Tools")
 	fmt.Println("=" + strings.Repeat("=", 50))
-	fmt.Printf("Total: 19 comprehensive web development tools\n\n")
+	fmt.Printf("Total: 23 comprehensive web development tools\n\n")
 	
 	tools := getAllTools()
 	
@@ -492,7 +495,7 @@ func listTools() {
 			"get_element_text", "get_element_attribute", "scroll", "hover_element",
 		},
 		"🕷️ Screen Scraping": {
-			"screen_scrape",
+			"screen_scrape", "extract_table",
 		},
 		"📁 File System": {
 			"read_file", "write_file", "list_directory",

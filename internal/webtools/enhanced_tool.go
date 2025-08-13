@@ -76,6 +76,16 @@ Examples:
 		
 Perfect for: Automated testing, validation, QA workflows, UI verification`,
 
+		"extract_table": `📊 Extract structured data from HTML tables (🔥 NEW)
+		
+Purpose: Convert HTML tables to structured data formats (JSON, CSV, arrays)
+Examples:
+  • "Extract product catalog table to JSON objects"
+  • "Convert pricing table to CSV for analysis"
+  • "Extract specific columns from data table"
+		
+Perfect for: Data scraping, report generation, table analysis, data export`,
+
 		"execute_script": `⚡ Execute JavaScript code in browser pages
 		
 Purpose: DOM manipulation, testing, API calls, custom interactions
@@ -253,6 +263,42 @@ func GetToolExamples(toolName string) []ToolExample {
 					"timeout": 3,
 				},
 				Expected: "Passes if success alert is visible on screen",
+			},
+		},
+		
+		"extract_table": {
+			{
+				Name: "Product Catalog Extraction",
+				Description: "Extract complete product table to structured JSON",
+				Parameters: map[string]interface{}{
+					"selector": "#products-table",
+					"output_format": "objects",
+					"include_headers": true,
+					"skip_empty_rows": true,
+				},
+				Expected: "Returns array of product objects with all table data",
+			},
+			{
+				Name: "Financial Data CSV Export",
+				Description: "Extract pricing table and convert to CSV format",
+				Parameters: map[string]interface{}{
+					"selector": ".pricing-table tbody",
+					"output_format": "csv",
+					"column_filter": []interface{}{"Product", "Price", "Features"},
+					"max_rows": 50,
+				},
+				Expected: "Returns CSV string with filtered columns for analysis",
+			},
+			{
+				Name: "Raw Data Array Extraction",
+				Description: "Extract table as raw arrays for processing",
+				Parameters: map[string]interface{}{
+					"selector": "table.data-grid",
+					"output_format": "array",
+					"include_headers": false,
+					"header_row": 1,
+				},
+				Expected: "Returns array of arrays with cell values for custom processing",
 			},
 		},
 	}

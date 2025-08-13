@@ -7,14 +7,14 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 - 🤖 **Works with Claude** - Full MCP protocol support for seamless integration
 - 🔄 **Robust Connection Management** - Automatic reconnection and health monitoring prevents timeout errors
 - 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless (browser visibility fixed!)
-- 🛠️ **19 Comprehensive Tools** - Complete browser control + screen scraping + file system + HTTP requests + interactive help
+- 🛠️ **23 Comprehensive Tools** - Complete browser control + screen scraping + table extraction + file system + HTTP requests + interactive help
 - 🏠 **Easy Install** - No sudo required with local user installation
 - 🚀 **Auto Go Install** - Makefile can install Go locally if not present
 - ⚡ **Go 1.24.5+ Performance** - Fast, reliable browser automation
 
 ## 🛠️ Available Tools
 
-Once installed, Claude gains access to these 19 comprehensive web development tools:
+Once installed, Claude gains access to these 23 comprehensive web development tools:
 
 ### 🌐 Browser Automation Tools
 
@@ -104,6 +104,19 @@ Extract structured data from web pages using CSS selectors with advanced scrapin
   - Multiple items: "Scrape all product cards with name, price, and image from this shopping page"
   - Dynamic content: "Wait for the AJAX content to load, then extract the data"
 
+### 📊 `extract_table` 🔥 NEW
+Extract structured data from HTML tables with support for multiple output formats
+- **Purpose**: Convert HTML tables to structured data (JSON, CSV, arrays) for analysis and processing
+- **Output Formats**: Objects (JSON), arrays, CSV strings
+- **Smart Filtering**: Column selection by name or index, row limits, empty row handling
+- **Header Support**: Configurable header detection and custom header rows
+- **Enhanced Data**: Automatically extracts links, images, and form values from table cells
+- **Use Cases**: Product catalogs, pricing tables, financial data, inventory reports, comparison charts
+- **Examples**:
+  - JSON objects: "Extract product table to structured JSON with name, price, and stock"
+  - CSV export: "Convert pricing table to CSV format for spreadsheet analysis"  
+  - Column filtering: "Extract only name and price columns from the product table"
+
 ### ❓ Help & Discovery Tools
 
 ### 💡 `help`
@@ -147,7 +160,7 @@ This shows Claude creating an interactive webpage, opening it in a visible brows
 
 ## 🤖 Claude Code Integration
 
-**RodMCP works perfectly with Claude Code!** Get instant access to 19 web development tools:
+**RodMCP works perfectly with Claude Code!** Get instant access to 23 web development tools:
 
 ### Quick Setup
 ```bash
@@ -246,7 +259,7 @@ claude mcp list  # Should show ✓ Connected
 ```
 
 **HTTP Mode Features:**
-- Same 19 tools as stdio mode
+- Same 23 tools as stdio mode
 - RESTful API at `http://localhost:8090`
 - Useful for debugging with browser dev tools
 - Can be accessed by multiple clients simultaneously
@@ -264,7 +277,7 @@ make stop-processes
 ### 5. Test with Claude
 Ask Claude: *"What web development tools do you have available?"*
 
-Claude should respond with the 19 RodMCP tools listed above.
+Claude should respond with the 23 RodMCP tools listed above.
 
 You can also ask: *"Help me get started with rodmcp"* and Claude will use the interactive help system to guide you.
 
@@ -373,7 +386,7 @@ then take screenshots of any issues you find."
 
 ## 🧪 Testing
 
-RodMCP includes a comprehensive test suite that validates all 19 MCP tools across 5 categories:
+RodMCP includes a comprehensive test suite that validates all 23 MCP tools across 5 categories:
 
 ### Run Comprehensive Test Suite
 ```bash
@@ -780,7 +793,7 @@ This fix resolves Chrome's `--no-startup-window` flag that was preventing the br
 - **[Local Install Guide](LOCAL_INSTALL.md)** - Install without sudo (recommended)
 - **[Browser Visibility](BROWSER_VISIBILITY.md)** - Control browser display modes
 - **[MCP Usage Examples](MCP_USAGE.md)** - How to use with Claude effectively
-- **[API Reference](API_REFERENCE.md)** - Complete technical documentation for all 19 tools
+- **[API Reference](API_REFERENCE.md)** - Complete technical documentation for all 23 tools
 
 ## 📋 System Requirements
 

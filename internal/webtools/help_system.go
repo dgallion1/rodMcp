@@ -155,6 +155,21 @@ func (h *HelpSystem) initializeHints() {
 		WorksWith: []string{"form_fill", "wait_for_condition", "click_element", "navigate_page"},
 	}
 
+	h.hints["extract_table"] = UsageHint{
+		Tool:        "extract_table",
+		Category:    BrowserAutomation,
+		Description: "Extract structured data from HTML tables with support for multiple output formats (JSON objects, arrays, CSV), column filtering, and header management. Perfect for data scraping and analysis workflows.",
+		Example:     "Extract product catalog table to JSON objects, filter specific columns, and export pricing data to CSV for analysis",
+		CommonUse: []string{
+			"Convert HTML tables to structured JSON data",
+			"Export table data to CSV for spreadsheet analysis",
+			"Extract specific columns from large data tables",
+			"Scrape pricing and product information",
+			"Generate reports from web-based dashboards",
+		},
+		WorksWith: []string{"navigate_page", "wait_for_condition", "screen_scrape", "http_request"},
+	}
+
 	// Add more hints for other tools...
 }
 
@@ -204,7 +219,14 @@ func (h *HelpSystem) GetWorkflowSuggestion(goals []string) string {
 		"4. Use `assert_element` to verify UI state and content",
 		"5. Use `screen_scrape` to extract and validate data",
 		"",
-		"📊 **API Testing Workflow:**", 
+		"📊 **Table Data Extraction Workflow (🔥 NEW):**",
+		"1. Use `navigate_page` to load page with data tables",
+		"2. Use `wait_for_condition` to ensure table data is loaded",
+		"3. Use `extract_table` to convert HTML tables to structured data",
+		"4. Use `assert_element` to verify extraction success",
+		"5. Use `write_file` to save extracted data for analysis",
+		"",
+		"🚀 **API Testing Workflow:**", 
 		"1. Use `http_request` to test your API endpoints",
 		"2. Use `create_page` to build a test interface",
 		"3. Use `execute_script` to make API calls from the browser",

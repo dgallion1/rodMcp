@@ -1,6 +1,6 @@
 # RodMCP API Reference
 
-Complete reference documentation for all 19 RodMCP tools, organized by category with detailed parameters, examples, and usage patterns.
+Complete reference documentation for all 23 RodMCP tools, organized by category with detailed parameters, examples, and usage patterns.
 
 ## 🌐 Browser Automation Tools
 
@@ -309,6 +309,71 @@ or
 }
 ```
 
+## 🕷️ Screen Scraping Tools
+
+### screen_scrape
+**Purpose:** Extract structured data from web pages using CSS selectors with advanced scraping capabilities.
+
+**Parameters:**
+- `selectors` (required): CSS selectors mapping field names to elements
+- `url` (optional): URL to scrape (if page_id not provided)
+- `page_id` (optional): Existing page ID to scrape from current browser session
+- `extract_type` (optional): 'single' or 'multiple' extraction mode (default: 'single')
+- `container_selector` (optional): Container selector for multiple items
+- `wait_for` (optional): CSS selector to wait for before scraping
+- `wait_timeout` (optional): Maximum seconds to wait (default: 10)
+- `scroll_to_load` (optional): Auto-scroll to trigger lazy loading (default: false)
+- `custom_script` (optional): Custom JavaScript to execute before scraping
+- `include_metadata` (optional): Include page metadata (default: true)
+
+**Returns:** Extracted data with metadata
+
+**Example:**
+```json
+{
+  "selectors": {
+    "title": "h1",
+    "price": ".price-value",
+    "description": ".product-description"
+  },
+  "extract_type": "multiple",
+  "container_selector": ".product-card"
+}
+```
+
+### extract_table 🔥 NEW
+**Purpose:** Extract structured data from HTML tables with support for multiple output formats, column filtering, and header management.
+
+**Parameters:**
+- `selector` (required): CSS selector for the table element
+- `page_id` (optional): Page ID to extract from
+- `include_headers` (optional): Include table headers (default: true)
+- `output_format` (optional): 'objects', 'array', or 'csv' (default: 'objects')
+- `skip_empty_rows` (optional): Skip completely empty rows (default: true)
+- `max_rows` (optional): Maximum rows to extract
+- `column_filter` (optional): Array of column indices or header names to include
+- `header_row` (optional): Row index to use as headers (default: 0)
+
+**Returns:** Structured table data in specified format with metadata
+
+**Examples:**
+```json
+{
+  "selector": "#products-table",
+  "output_format": "objects",
+  "column_filter": ["Product", "Price", "Stock"]
+}
+```
+
+```json
+{
+  "selector": ".data-grid tbody",
+  "output_format": "csv",
+  "max_rows": 100,
+  "skip_empty_rows": true
+}
+```
+
 ## 🌍 Network Tools
 
 ### http_request
@@ -457,4 +522,4 @@ Provide guidance and tool discovery.
 
 RodMCP implements the Model Context Protocol (MCP) specification and communicates via JSON-RPC 2.0. All tools are automatically discovered by MCP clients like Claude Desktop and Claude CLI.
 
-For development and testing, the comprehensive test suite validates all 19 tools across realistic usage scenarios.
+For development and testing, the comprehensive test suite validates all 23 tools across realistic usage scenarios.

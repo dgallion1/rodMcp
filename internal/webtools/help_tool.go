@@ -92,7 +92,7 @@ func (t *HelpTool) Execute(args map[string]interface{}) (*types.CallToolResponse
 func (t *HelpTool) getOverview() string {
 	return `# 🛠️ RodMCP Tools Overview
 
-RodMCP provides 22 comprehensive web development tools organized into 7 categories:
+RodMCP provides 23 comprehensive web development tools organized into 7 categories:
 
 ## 🌐 Browser Automation (6 tools)
 • **create_page** - Generate HTML pages with CSS/JavaScript  
@@ -110,8 +110,9 @@ RodMCP provides 22 comprehensive web development tools organized into 7 categori
 • **scroll** - Navigate long pages
 • **hover_element** - Trigger hover effects
 
-## 🕷️ Screen Scraping (1 tool)
+## 🕷️ Screen Scraping (2 tools)
 • **screen_scrape** - Extract structured data from web pages
+• **extract_table** - Extract structured data from HTML tables
 
 ## 📝 Form Automation (1 tool)
 • **form_fill** - Complete form automation with validation and submission
@@ -186,6 +187,15 @@ assert_element:
   case_sensitive: false
 ` + "```" + `
 
+## 📊 Table Data Extraction
+` + "```" + `
+extract_table:
+  selector: "#products-table"
+  output_format: "objects"
+  include_headers: true
+  column_filter: ["Product", "Price", "Stock"]
+` + "```" + `
+
 ## 🧪 Advanced Test Form Workflow  
 ` + "```" + `
 1. navigate_page: "contact-form.html"
@@ -214,6 +224,8 @@ assert_element:
 ` + "```" + `
 
 🔥 **Pro Tip**: Combine form_fill + wait_for_condition + assert_element for robust automation workflows!
+
+🔥 **New Pro Tip**: Use extract_table + screen_scrape for comprehensive data extraction workflows!
 
 Use help [tool_name] for detailed tool-specific examples!`
 }
