@@ -283,6 +283,19 @@ if curl -s "http://localhost:$PORT/health" >/dev/null 2>&1; then
     
     print_success "Ready for Claude Code integration!"
     echo
+    # Also configure Claude Code with CLI for better compatibility
+    print_status "Configuring Claude Code via CLI..."
+    if claude mcp list | grep -q "rodmcp"; then
+        claude mcp remove rodmcp >/dev/null 2>&1 || true
+    fi
+    
+    # Use stdio mode for Claude Code (more reliable)
+    if claude mcp add --transport stdio rodmcp /home/darrell/.local/bin/rodmcp 2>/dev/null; then
+        print_success "Added RodMCP to Claude Code (stdio mode)"
+    else
+        print_warning "Could not configure Claude Code automatically"
+    fi
+    
     print_status "Next steps:"
     echo "1. Restart Claude Desktop: Close and reopen Claude Desktop app"
     echo "2. Restart Claude Code (if using): pkill claude-code && claude-code"  
