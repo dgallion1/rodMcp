@@ -433,51 +433,80 @@ func (t *ExecuteScriptTool) InputSchema() types.ToolSchema {
 }
 
 func (t *ExecuteScriptTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
-	start := time.Now()
-	defer func() {
-		duration := time.Since(start).Milliseconds()
-		t.logger.LogToolExecution(t.Name(), args, true, duration)
-	}()
+	// Add total execution timeout to prevent hanging
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	
+	// Use a channel to handle timeout
+	type result struct {
+		response *types.CallToolResponse
+		err      error
+	}
+	resultChan := make(chan result, 1)
+	
+	go func() {
+		start := time.Now()
+		defer func() {
+			duration := time.Since(start).Milliseconds()
+			t.logger.LogToolExecution(t.Name(), args, true, duration)
+		}()
 
-	pageID, ok := args["page_id"].(string)
-	if !ok || pageID == "" {
-		// Use first available page
-		pages := t.browser.ListPages()
-		if len(pages) == 0 {
-			return &types.CallToolResponse{
+		pageID, ok := args["page_id"].(string)
+		if !ok || pageID == "" {
+			// Use first available page
+			pages := t.browser.ListPages()
+			if len(pages) == 0 {
+				resultChan <- result{&types.CallToolResponse{
+					Content: []types.ToolContent{{
+						Type: "text",
+						Text: "No pages available for script execution",
+					}},
+					IsError: true,
+				}, nil}
+				return
+			}
+			pageID = pages[0]
+		}
+
+		script, ok := args["script"].(string)
+		if !ok {
+			resultChan <- result{nil, fmt.Errorf("script is required")}
+			return
+		}
+
+		scriptResult, err := t.browser.ExecuteScript(pageID, script)
+		if err != nil {
+			resultChan <- result{&types.CallToolResponse{
 				Content: []types.ToolContent{{
 					Type: "text",
-					Text: "No pages available for script execution",
+					Text: fmt.Sprintf("Script execution failed: %v", err),
 				}},
 				IsError: true,
-			}, nil
+			}, nil}
+			return
 		}
-		pageID = pages[0]
-	}
 
-	script, ok := args["script"].(string)
-	if !ok {
-		return nil, fmt.Errorf("script is required")
-	}
-
-	result, err := t.browser.ExecuteScript(pageID, script)
-	if err != nil {
+		resultChan <- result{&types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Script executed successfully. Result: %v", scriptResult),
+				Data: scriptResult,
+			}},
+		}, nil}
+	}()
+	
+	select {
+	case res := <-resultChan:
+		return res.response, res.err
+	case <-ctx.Done():
 		return &types.CallToolResponse{
 			Content: []types.ToolContent{{
 				Type: "text",
-				Text: fmt.Sprintf("Script execution failed: %v", err),
+				Text: "Script execution timed out after 30 seconds",
 			}},
 			IsError: true,
 		}, nil
 	}
-
-	return &types.CallToolResponse{
-		Content: []types.ToolContent{{
-			Type: "text",
-			Text: fmt.Sprintf("Script executed successfully. Result: %v", result),
-			Data: result,
-		}},
-	}, nil
 }
 
 // BrowserVisibilityTool controls browser visibility at runtime
@@ -2138,6 +2167,37 @@ func (t *ScreenScrapeTool) InputSchema() types.ToolSchema {
 }
 
 func (t *ScreenScrapeTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	// Add total execution timeout to prevent hanging
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	
+	// Use a channel to handle timeout
+	type result struct {
+		response *types.CallToolResponse
+		err      error
+	}
+	resultChan := make(chan result, 1)
+	
+	go func() {
+		resp, err := t.executeScreenScrape(args)
+		resultChan <- result{resp, err}
+	}()
+	
+	select {
+	case res := <-resultChan:
+		return res.response, res.err
+	case <-ctx.Done():
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: "Screen scrape timed out after 60 seconds",
+			}},
+			IsError: true,
+		}, nil
+	}
+}
+
+func (t *ScreenScrapeTool) executeScreenScrape(args map[string]interface{}) (*types.CallToolResponse, error) {
 	start := time.Now()
 
 	// Get or create page
