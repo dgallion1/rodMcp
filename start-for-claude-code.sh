@@ -215,34 +215,9 @@ SERVER_PID=$!
 # Wait a moment for server to start
 sleep 2
 
-# Update Claude configurations for both Desktop and Code
-update_claude_configs() {
-    # Update Claude Code (HTTP mode)
-    local code_config_dir="$HOME/.config/claude-code"
-    local code_config_file="$code_config_dir/mcp-servers.json"
-    
-    if [[ ! -d "$code_config_dir" ]]; then
-        mkdir -p "$code_config_dir"
-        print_status "Created Claude Code config directory: $code_config_dir"
-    fi
-    
-    local code_server_config="{
-  \"mcpServers\": {
-    \"rodmcp-web-automation\": {
-      \"url\": \"http://localhost:$PORT\"
-    }
-  }
-}"
-    
-    if [[ -f "$code_config_file" ]]; then
-        cp "$code_config_file" "$code_config_file.backup"
-        print_status "Backed up Claude Code config to: $code_config_file.backup"
-    fi
-    
-    echo "$code_server_config" > "$code_config_file"
-    print_success "Updated Claude Code configuration (HTTP): $code_config_file"
-    
-    # Update Claude Desktop (stdio mode)  
+# Update Claude Desktop configuration only (Claude Code uses claude mcp add)
+update_claude_desktop_config() {
+    # Update Claude Desktop (HTTP mode)  
     local desktop_config_dir="$HOME/.config/claude"
     local desktop_config_file="$desktop_config_dir/mcp_servers.json"
     
@@ -252,12 +227,10 @@ update_claude_configs() {
     fi
     
     local desktop_server_config="{
-  \"rodmcp\": {
-    \"command\": \"/home/darrell/.local/bin/rodmcp\",
-    \"args\": [
-      \"--headless=true\",
-      \"--log-level=info\"
-    ]
+  \"mcpServers\": {
+    \"rodmcp\": {
+      \"url\": \"http://localhost:$PORT\"
+    }
   }
 }"
     
@@ -267,9 +240,7 @@ update_claude_configs() {
     fi
     
     echo "$desktop_server_config" > "$desktop_config_file"
-    print_success "Updated Claude Desktop configuration (stdio): $desktop_config_file"
-    
-    print_status "Both Claude Desktop and Claude Code are now configured for RodMCP"
+    print_success "Updated Claude Desktop configuration (HTTP): $desktop_config_file"
 }
 
 # Check if server started successfully
@@ -278,14 +249,14 @@ if curl -s "http://localhost:$PORT/health" >/dev/null 2>&1; then
     print_success "PID: $SERVER_PID"
     print_success "Health check: http://localhost:$PORT/health"
     
-    # Update Claude configurations for both Desktop and Code
-    update_claude_configs
+    # Update Claude Desktop configuration (Claude Code uses claude mcp add)
+    update_claude_desktop_config
     
     print_success "Ready for Claude Code integration!"
     echo
     # Configure Claude Code MCP project config
     print_status "Configuring Claude Code MCP project config..."
-    local project_mcp_config="$SCRIPT_DIR/.mcp.json"
+    project_mcp_config="$SCRIPT_DIR/.mcp.json"
     
     # Create project MCP config with proper arguments
     cat > "$project_mcp_config" << 'EOF'
@@ -307,9 +278,23 @@ EOF
         print_warning "Could not create Claude Code project MCP config"
     fi
     
+    # Configure Claude Code MCP (user scope for global access)
+    print_status "Configuring Claude Code MCP (global user scope)..."
+    if command -v claude >/dev/null 2>&1; then
+        if claude mcp add rodmcp "$SCRIPT_DIR/bin/rodmcp" -s user -- --headless --log-level=info 2>/dev/null; then
+            print_success "Added rodmcp to Claude Code user configuration"
+        elif claude mcp add rodmcp /home/darrell/.local/bin/rodmcp -s user -- --headless --log-level=info 2>/dev/null; then
+            print_success "Added rodmcp to Claude Code user configuration (local bin)"
+        else
+            print_warning "Could not add rodmcp to Claude Code - may already exist or claude command not available"
+        fi
+    else
+        print_warning "Claude Code CLI not available - configure manually with: claude mcp add rodmcp /home/darrell/.local/bin/rodmcp -s user -- --headless --log-level=info"
+    fi
+    
     print_status "Next steps:"
-    echo "1. Restart Claude Desktop: Close and reopen Claude Desktop app"
-    echo "2. Restart Claude Code (if using): pkill claude-code && claude-code"  
+    echo "1. For Claude Desktop: Close and reopen Claude Desktop app"
+    echo "2. For Claude Code: Should now be configured globally"
     echo "3. Ask Claude: 'What tools do you have available?'"
     echo "4. Start automating: 'Create a simple HTML page and take a screenshot'"
     echo
