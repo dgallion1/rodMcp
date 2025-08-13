@@ -133,6 +133,15 @@ func main() {
 	// Screen scraping tools
 	mcpServer.RegisterTool(webtools.NewScreenScrapeTool(log, browserMgr))
 	
+	// Form automation tools
+	mcpServer.RegisterTool(webtools.NewFormFillTool(log, browserMgr))
+	
+	// Advanced waiting tools
+	mcpServer.RegisterTool(webtools.NewWaitForConditionTool(log, browserMgr))
+	
+	// Testing and assertion tools
+	mcpServer.RegisterTool(webtools.NewAssertElementTool(log, browserMgr))
+	
 	// File system tools
 	mcpServer.RegisterTool(webtools.NewReadFileTool(log))
 	mcpServer.RegisterTool(webtools.NewWriteFileTool(log))
@@ -264,6 +273,15 @@ func startHTTPServer() {
 	// Screen scraping tools
 	httpServer.RegisterTool(webtools.NewScreenScrapeTool(log, browserMgr))
 	
+	// Form automation tools
+	httpServer.RegisterTool(webtools.NewFormFillTool(log, browserMgr))
+	
+	// Advanced waiting tools
+	httpServer.RegisterTool(webtools.NewWaitForConditionTool(log, browserMgr))
+	
+	// Testing and assertion tools
+	httpServer.RegisterTool(webtools.NewAssertElementTool(log, browserMgr))
+	
 	// File system tools
 	httpServer.RegisterTool(webtools.NewReadFileTool(log))
 	httpServer.RegisterTool(webtools.NewWriteFileTool(log))
@@ -369,6 +387,15 @@ func getAllTools() map[string]mcp.Tool {
 	
 	// Screen scraping tools
 	tools["screen_scrape"] = webtools.NewScreenScrapeTool(log, browserMgr)
+	
+	// Form automation tools
+	tools["form_fill"] = webtools.NewFormFillTool(log, browserMgr)
+	
+	// Advanced waiting tools
+	tools["wait_for_condition"] = webtools.NewWaitForConditionTool(log, browserMgr)
+	
+	// Testing and assertion tools
+	tools["assert_element"] = webtools.NewAssertElementTool(log, browserMgr)
 	
 	// File system tools
 	tools["read_file"] = webtools.NewReadFileTool(log)

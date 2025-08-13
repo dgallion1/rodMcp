@@ -2544,3 +2544,1354 @@ func (t *ScreenScrapeTool) scrapeMultiple(pageID string, selectors map[string]in
 
 	return nil, fmt.Errorf("unexpected data format returned from scraping script: %T", data)
 }
+
+// FormFillTool fills out forms with structured data
+type FormFillTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewFormFillTool(log *logger.Logger, mgr *browser.Manager) *FormFillTool {
+	return &FormFillTool{logger: log, browserMgr: mgr}
+}
+
+func (t *FormFillTool) Name() string {
+	return "form_fill"
+}
+
+func (t *FormFillTool) Description() string {
+	return "Fill out forms with structured data. Handles text inputs, selects, checkboxes, radio buttons, and textareas. Can validate required fields and optionally submit the form."
+}
+
+func (t *FormFillTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"form_selector": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector for the form element or container (optional, defaults to 'form')",
+				"default":     "form",
+			},
+			"fields": map[string]interface{}{
+				"type":        "object",
+				"description": "Object mapping field selectors to values. Keys are CSS selectors, values are the data to fill. Example: {\"#email\": \"test@example.com\", \"select[name='country']\": \"US\", \"input[name='subscribe']\": true}",
+				"additionalProperties": interface{}(map[string]interface{}{
+					"oneOf": []interface{}{
+						map[string]interface{}{"type": "string"},
+						map[string]interface{}{"type": "boolean"},
+						map[string]interface{}{"type": "number"},
+					},
+				}),
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Page ID (optional, uses first page if not specified)",
+			},
+			"submit": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Whether to submit the form after filling (default: false)",
+				"default":     false,
+			},
+			"validate_required": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Whether to validate that required fields are filled (default: true)",
+				"default":     true,
+			},
+			"trigger_events": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Whether to trigger input/change events after filling fields (default: true)",
+				"default":     true,
+			},
+		},
+		Required: []string{"fields"},
+	}
+}
+
+func (t *FormFillTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	// Add timeout protection
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	
+	type result struct {
+		response *types.CallToolResponse
+		err      error
+	}
+	resultChan := make(chan result, 1)
+	
+	go func() {
+		resp, err := t.executeFormFill(args)
+		resultChan <- result{resp, err}
+	}()
+	
+	select {
+	case res := <-resultChan:
+		return res.response, res.err
+	case <-ctx.Done():
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: "Form fill operation timed out after 30 seconds",
+			}},
+			IsError: true,
+		}, nil
+	}
+}
+
+func (t *FormFillTool) executeFormFill(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Milliseconds()
+		t.logger.LogToolExecution(t.Name(), args, true, duration)
+	}()
+
+	// Get page ID
+	pageID := ""
+	if val, ok := args["page_id"].(string); ok {
+		pageID = val
+	}
+	
+	if pageID == "" {
+		pages := t.browserMgr.ListPages()
+		if len(pages) == 0 {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: "No pages available for form filling",
+				}},
+				IsError: true,
+			}, nil
+		}
+		pageID = pages[0]
+	}
+
+	// Get form selector
+	formSelector := "form"
+	if val, ok := args["form_selector"].(string); ok && val != "" {
+		formSelector = val
+	}
+
+	// Get fields to fill
+	fields, ok := args["fields"].(map[string]interface{})
+	if !ok || len(fields) == 0 {
+		return nil, fmt.Errorf("fields must be provided as key-value pairs")
+	}
+
+	// Get options
+	submit := false
+	if val, ok := args["submit"].(bool); ok {
+		submit = val
+	}
+
+	validateRequired := true
+	if val, ok := args["validate_required"].(bool); ok {
+		validateRequired = val
+	}
+
+	triggerEvents := true
+	if val, ok := args["trigger_events"].(bool); ok {
+		triggerEvents = val
+	}
+
+	// Build the form filling script
+	var fillResults []map[string]interface{}
+	var errors []string
+
+	for fieldSelector, value := range fields {
+		result, err := t.fillSingleField(pageID, formSelector, fieldSelector, value, triggerEvents)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("Field %s: %v", fieldSelector, err))
+			continue
+		}
+		fillResults = append(fillResults, result)
+	}
+
+	// Validate required fields if requested
+	var validationErrors []string
+	if validateRequired {
+		validationErrors, _ = t.validateRequiredFields(pageID, formSelector)
+	}
+
+	// Submit form if requested and no critical errors
+	var submitResult string
+	if submit && len(errors) == 0 {
+		submitErr := t.submitForm(pageID, formSelector)
+		if submitErr != nil {
+			errors = append(errors, fmt.Sprintf("Form submission failed: %v", submitErr))
+			submitResult = "Failed"
+		} else {
+			submitResult = "Success"
+		}
+	} else if submit {
+		submitResult = "Skipped due to field errors"
+	} else {
+		submitResult = "Not requested"
+	}
+
+	// Prepare response
+	hasErrors := len(errors) > 0 || len(validationErrors) > 0
+	
+	var messageText strings.Builder
+	messageText.WriteString(fmt.Sprintf("Form fill completed: %d fields processed", len(fields)))
+	
+	if len(fillResults) > 0 {
+		messageText.WriteString(fmt.Sprintf(", %d successful", len(fillResults)))
+	}
+	
+	if len(errors) > 0 {
+		messageText.WriteString(fmt.Sprintf(", %d failed", len(errors)))
+	}
+	
+	if submit {
+		messageText.WriteString(fmt.Sprintf(", submission: %s", submitResult))
+	}
+
+	responseData := map[string]interface{}{
+		"fields_processed": len(fields),
+		"successful_fills": fillResults,
+		"errors":          errors,
+		"validation_errors": validationErrors,
+		"submit_requested": submit,
+		"submit_result":    submitResult,
+		"form_selector":    formSelector,
+		"page_id":         pageID,
+	}
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: messageText.String(),
+			Data: responseData,
+		}},
+		IsError: hasErrors,
+	}, nil
+}
+
+func (t *FormFillTool) fillSingleField(pageID, formSelector, fieldSelector string, value interface{}, triggerEvents bool) (map[string]interface{}, error) {
+	// Convert value to appropriate JavaScript representation
+	var jsValue string
+	var valueType string
+	
+	switch v := value.(type) {
+	case string:
+		jsValue = fmt.Sprintf("'%s'", strings.ReplaceAll(strings.ReplaceAll(v, "\\", "\\\\"), "'", "\\'"))
+		valueType = "string"
+	case bool:
+		jsValue = fmt.Sprintf("%v", v)
+		valueType = "boolean"
+	case float64:
+		jsValue = fmt.Sprintf("%v", v)
+		valueType = "number"
+	case int:
+		jsValue = fmt.Sprintf("%v", v)
+		valueType = "number"
+	default:
+		return nil, fmt.Errorf("unsupported value type: %T", value)
+	}
+
+	eventsScript := ""
+	if triggerEvents {
+		eventsScript = `
+			element.dispatchEvent(new Event('input', { bubbles: true }));
+			element.dispatchEvent(new Event('change', { bubbles: true }));
+			element.dispatchEvent(new Event('blur', { bubbles: true }));
+		`
+	}
+
+	script := fmt.Sprintf(`
+		const form = document.querySelector('%s');
+		if (!form) {
+			throw new Error('Form not found with selector: %s');
+		}
+		
+		const element = form.querySelector('%s') || document.querySelector('%s');
+		if (!element) {
+			throw new Error('Field not found with selector: %s');
+		}
+		
+		const tagName = element.tagName.toLowerCase();
+		const inputType = element.type ? element.type.toLowerCase() : '';
+		const value = %s;
+		let result = {
+			selector: '%s',
+			tagName: tagName,
+			type: inputType,
+			value: value,
+			valueType: '%s',
+			success: false,
+			method: ''
+		};
+		
+		try {
+			if (tagName === 'input') {
+				if (inputType === 'checkbox' || inputType === 'radio') {
+					element.checked = Boolean(value);
+					result.method = 'checked';
+				} else {
+					element.value = String(value);
+					result.method = 'value';
+				}
+			} else if (tagName === 'select') {
+				element.value = String(value);
+				result.method = 'value';
+			} else if (tagName === 'textarea') {
+				element.value = String(value);
+				result.method = 'value';
+			} else {
+				element.textContent = String(value);
+				result.method = 'textContent';
+			}
+			
+			%s
+			
+			result.success = true;
+			result.finalValue = element.value || element.textContent || element.checked;
+			
+		} catch (error) {
+			result.error = error.message;
+		}
+		
+		return result;
+	`, formSelector, formSelector, fieldSelector, fieldSelector, fieldSelector, jsValue, fieldSelector, valueType, eventsScript)
+
+	data, err := t.browserMgr.ExecuteScript(pageID, script)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute field fill script: %w", err)
+	}
+
+	// Convert result to map
+	if resultMap, ok := data.(map[string]interface{}); ok {
+		if success, ok := resultMap["success"].(bool); !ok || !success {
+			if errMsg, ok := resultMap["error"].(string); ok {
+				return resultMap, fmt.Errorf("field fill failed: %s", errMsg)
+			}
+			return resultMap, fmt.Errorf("field fill failed for unknown reason")
+		}
+		return resultMap, nil
+	}
+
+	// Handle go-rod gson types by marshaling/unmarshaling
+	if jsonBytes, err := json.Marshal(data); err == nil {
+		var resultMap map[string]interface{}
+		if err := json.Unmarshal(jsonBytes, &resultMap); err == nil {
+			if success, ok := resultMap["success"].(bool); !ok || !success {
+				if errMsg, ok := resultMap["error"].(string); ok {
+					return resultMap, fmt.Errorf("field fill failed: %s", errMsg)
+				}
+			}
+			return resultMap, nil
+		}
+	}
+
+	return map[string]interface{}{"raw_data": data}, nil
+}
+
+func (t *FormFillTool) validateRequiredFields(pageID, formSelector string) ([]string, error) {
+	script := fmt.Sprintf(`
+		const form = document.querySelector('%s');
+		if (!form) {
+			throw new Error('Form not found with selector: %s');
+		}
+		
+		const requiredFields = form.querySelectorAll('[required]');
+		const errors = [];
+		
+		requiredFields.forEach(field => {
+			const tagName = field.tagName.toLowerCase();
+			const type = field.type ? field.type.toLowerCase() : '';
+			let isEmpty = false;
+			
+			if (tagName === 'input') {
+				if (type === 'checkbox' || type === 'radio') {
+					isEmpty = !field.checked;
+				} else {
+					isEmpty = !field.value.trim();
+				}
+			} else if (tagName === 'select') {
+				isEmpty = !field.value;
+			} else if (tagName === 'textarea') {
+				isEmpty = !field.value.trim();
+			}
+			
+			if (isEmpty) {
+				errors.push({
+					selector: field.name ? '[name="' + field.name + '"]' : field.id ? '#' + field.id : tagName + '[required]',
+					name: field.name || field.id || 'unnamed',
+					type: type || tagName,
+					message: 'Required field is empty'
+				});
+			}
+		});
+		
+		return errors;
+	`, formSelector, formSelector)
+
+	data, err := t.browserMgr.ExecuteScript(pageID, script)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate required fields: %w", err)
+	}
+
+	var errors []string
+	
+	// Handle different data types returned by go-rod
+	if errorsList, ok := data.([]interface{}); ok {
+		for _, errorItem := range errorsList {
+			if errorMap, ok := errorItem.(map[string]interface{}); ok {
+				if message, ok := errorMap["message"].(string); ok {
+					name := "unknown"
+					if n, ok := errorMap["name"].(string); ok {
+						name = n
+					}
+					errors = append(errors, fmt.Sprintf("%s: %s", name, message))
+				}
+			}
+		}
+	}
+
+	return errors, nil
+}
+
+func (t *FormFillTool) submitForm(pageID, formSelector string) error {
+	script := fmt.Sprintf(`
+		const form = document.querySelector('%s');
+		if (!form) {
+			throw new Error('Form not found with selector: %s');
+		}
+		
+		// Try to find and click submit button first
+		const submitButton = form.querySelector('input[type="submit"], button[type="submit"], button:not([type])');
+		if (submitButton && !submitButton.disabled) {
+			submitButton.click();
+			return 'Submitted via button click';
+		} else {
+			// Fall back to form.submit()
+			form.submit();
+			return 'Submitted via form.submit()';
+		}
+	`, formSelector, formSelector)
+
+	_, err := t.browserMgr.ExecuteScript(pageID, script)
+	if err != nil {
+		return fmt.Errorf("failed to submit form: %w", err)
+	}
+
+	return nil
+}
+
+// WaitForConditionTool waits for custom JavaScript conditions to become true
+type WaitForConditionTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewWaitForConditionTool(log *logger.Logger, mgr *browser.Manager) *WaitForConditionTool {
+	return &WaitForConditionTool{logger: log, browserMgr: mgr}
+}
+
+func (t *WaitForConditionTool) Name() string {
+	return "wait_for_condition"
+}
+
+func (t *WaitForConditionTool) Description() string {
+	return "Wait for a custom JavaScript condition to become true. Much more flexible than waiting for elements - can wait for animations, API responses, state changes, or any complex condition."
+}
+
+func (t *WaitForConditionTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"condition": map[string]interface{}{
+				"type":        "string",
+				"description": "JavaScript expression or function that returns true when condition is met. Examples: 'document.readyState === \"complete\"', '!!window.myApp && window.myApp.loaded', 'document.querySelectorAll(\".item\").length >= 5'",
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Page ID (optional, uses first page if not specified)",
+			},
+			"timeout": map[string]interface{}{
+				"type":        "integer",
+				"description": "Maximum time to wait in seconds (default: 10)",
+				"default":     10,
+				"minimum":     1,
+				"maximum":     120,
+			},
+			"interval": map[string]interface{}{
+				"type":        "integer",
+				"description": "Polling interval in milliseconds (default: 100)",
+				"default":     100,
+				"minimum":     50,
+				"maximum":     5000,
+			},
+			"description": map[string]interface{}{
+				"type":        "string",
+				"description": "Optional description of what you're waiting for (for logging and error messages)",
+			},
+			"return_value": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Whether to return the final value of the condition (default: false)",
+				"default":     false,
+			},
+		},
+		Required: []string{"condition"},
+	}
+}
+
+func (t *WaitForConditionTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	// Add timeout protection (with buffer for internal timeout)
+	internalTimeout := 10 * time.Second
+	if val, ok := args["timeout"].(float64); ok {
+		internalTimeout = time.Duration(val+5) * time.Second // Add 5s buffer
+	}
+	
+	ctx, cancel := context.WithTimeout(context.Background(), internalTimeout)
+	defer cancel()
+	
+	type result struct {
+		response *types.CallToolResponse
+		err      error
+	}
+	resultChan := make(chan result, 1)
+	
+	go func() {
+		resp, err := t.executeWaitForCondition(args)
+		resultChan <- result{resp, err}
+	}()
+	
+	select {
+	case res := <-resultChan:
+		return res.response, res.err
+	case <-ctx.Done():
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: "Wait for condition operation timed out",
+			}},
+			IsError: true,
+		}, nil
+	}
+}
+
+func (t *WaitForConditionTool) executeWaitForCondition(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Milliseconds()
+		t.logger.LogToolExecution(t.Name(), args, true, duration)
+	}()
+
+	// Get page ID
+	pageID := ""
+	if val, ok := args["page_id"].(string); ok {
+		pageID = val
+	}
+	
+	if pageID == "" {
+		pages := t.browserMgr.ListPages()
+		if len(pages) == 0 {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: "No pages available for waiting for condition",
+				}},
+				IsError: true,
+			}, nil
+		}
+		pageID = pages[0]
+	}
+
+	// Get condition
+	condition, ok := args["condition"].(string)
+	if !ok || condition == "" {
+		return nil, fmt.Errorf("condition must be provided as a string")
+	}
+
+	// Get parameters
+	timeout := 10
+	if val, ok := args["timeout"].(float64); ok {
+		timeout = int(val)
+	}
+
+	interval := 100
+	if val, ok := args["interval"].(float64); ok {
+		interval = int(val)
+	}
+
+	description := ""
+	if val, ok := args["description"].(string); ok {
+		description = val
+	}
+
+	returnValue := false
+	if val, ok := args["return_value"].(bool); ok {
+		returnValue = val
+	}
+
+	// Clean up condition for JavaScript execution
+	condition = strings.TrimSpace(condition)
+	
+	// Build the waiting script
+	script := fmt.Sprintf(`
+		const condition = () => {
+			try {
+				return %s;
+			} catch (error) {
+				console.warn('Condition evaluation error:', error);
+				return false;
+			}
+		};
+
+		const maxWait = %d * 1000; // Convert to milliseconds
+		const interval = %d;
+		const startTime = Date.now();
+		const returnValue = %v;
+		
+		let attempts = 0;
+		let lastResult = null;
+		
+		function checkCondition() {
+			attempts++;
+			const result = condition();
+			lastResult = result;
+			
+			if (result) {
+				const elapsed = Date.now() - startTime;
+				return {
+					success: true,
+					result: returnValue ? result : true,
+					elapsed_ms: elapsed,
+					attempts: attempts,
+					condition: '%s',
+					description: '%s'
+				};
+			}
+			
+			if (Date.now() - startTime > maxWait) {
+				const elapsed = Date.now() - startTime;
+				return {
+					success: false,
+					result: returnValue ? lastResult : false,
+					elapsed_ms: elapsed,
+					attempts: attempts,
+					condition: '%s',
+					description: '%s',
+					error: 'Timeout after ' + elapsed + 'ms'
+				};
+			}
+			
+			// Continue waiting
+			return new Promise((resolve, reject) => {
+				setTimeout(() => {
+					try {
+						resolve(checkCondition());
+					} catch (error) {
+						reject(error);
+					}
+				}, interval);
+			});
+		}
+		
+		return checkCondition();
+	`, condition, timeout, interval, returnValue, 
+		strings.ReplaceAll(condition, "'", "\\'"), 
+		strings.ReplaceAll(description, "'", "\\'"),
+		strings.ReplaceAll(condition, "'", "\\'"),
+		strings.ReplaceAll(description, "'", "\\'"))
+
+	// Execute the script
+	data, err := t.browserMgr.ExecuteScript(pageID, script)
+	if err != nil {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Failed to execute wait condition: %v", err),
+			}},
+			IsError: true,
+		}, nil
+	}
+
+	// Parse result
+	var resultMap map[string]interface{}
+	
+	// Handle go-rod gson types by marshaling/unmarshaling if needed
+	if directMap, ok := data.(map[string]interface{}); ok {
+		resultMap = directMap
+	} else if jsonBytes, err := json.Marshal(data); err == nil {
+		if err := json.Unmarshal(jsonBytes, &resultMap); err != nil {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: fmt.Sprintf("Failed to parse wait result: %v", err),
+				}},
+				IsError: true,
+			}, nil
+		}
+	} else {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Unexpected result format: %T", data),
+			}},
+			IsError: true,
+		}, nil
+	}
+
+	// Extract result information
+	success := false
+	if val, ok := resultMap["success"].(bool); ok {
+		success = val
+	}
+
+	elapsed := float64(0)
+	if val, ok := resultMap["elapsed_ms"].(float64); ok {
+		elapsed = val
+	}
+
+	attempts := float64(0)
+	if val, ok := resultMap["attempts"].(float64); ok {
+		attempts = val
+	}
+
+	errorMsg := ""
+	if val, ok := resultMap["error"].(string); ok {
+		errorMsg = val
+	}
+
+	// Prepare response
+	var messageText strings.Builder
+	
+	if success {
+		messageText.WriteString("Condition satisfied")
+		if description != "" {
+			messageText.WriteString(fmt.Sprintf(": %s", description))
+		}
+		messageText.WriteString(fmt.Sprintf(" (%.0fms, %d attempts)", elapsed, int(attempts)))
+	} else {
+		messageText.WriteString("Condition not satisfied")
+		if description != "" {
+			messageText.WriteString(fmt.Sprintf(": %s", description))
+		}
+		messageText.WriteString(fmt.Sprintf(" - %s (%.0fms, %d attempts)", errorMsg, elapsed, int(attempts)))
+	}
+
+	responseData := map[string]interface{}{
+		"success":     success,
+		"condition":   condition,
+		"description": description,
+		"elapsed_ms":  elapsed,
+		"attempts":    int(attempts),
+		"timeout":     timeout,
+		"interval":    interval,
+		"page_id":     pageID,
+	}
+
+	if returnValue {
+		responseData["final_value"] = resultMap["result"]
+	}
+
+	if errorMsg != "" {
+		responseData["error"] = errorMsg
+	}
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: messageText.String(),
+			Data: responseData,
+		}},
+		IsError: !success,
+	}, nil
+}
+
+// AssertElementTool provides comprehensive element assertions for testing
+type AssertElementTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewAssertElementTool(log *logger.Logger, mgr *browser.Manager) *AssertElementTool {
+	return &AssertElementTool{logger: log, browserMgr: mgr}
+}
+
+func (t *AssertElementTool) Name() string {
+	return "assert_element"
+}
+
+func (t *AssertElementTool) Description() string {
+	return "Assert element existence, visibility, state, text content, or attributes. Essential for testing and validation workflows."
+}
+
+func (t *AssertElementTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"selector": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector for the element to assert",
+			},
+			"assertion": map[string]interface{}{
+				"type":        "string",
+				"description": "Type of assertion to perform",
+				"enum": []string{
+					"exists", "not_exists", 
+					"visible", "hidden",
+					"enabled", "disabled",
+					"contains_text", "exact_text", "not_contains_text",
+					"has_attribute", "attribute_equals", "attribute_contains",
+					"has_class", "not_has_class",
+					"is_checked", "is_unchecked",
+					"count_equals", "count_greater_than", "count_less_than",
+				},
+			},
+			"expected_value": map[string]interface{}{
+				"type":        "string",
+				"description": "Expected value for text/attribute/count assertions (required for some assertion types)",
+			},
+			"attribute_name": map[string]interface{}{
+				"type":        "string", 
+				"description": "Attribute name for attribute-based assertions (required for has_attribute, attribute_equals, attribute_contains)",
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Page ID (optional, uses first page if not specified)",
+			},
+			"timeout": map[string]interface{}{
+				"type":        "integer",
+				"description": "Maximum time to wait for element before asserting in seconds (default: 5)",
+				"default":     5,
+				"minimum":     0,
+				"maximum":     30,
+			},
+			"case_sensitive": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Whether text comparisons should be case sensitive (default: false)",
+				"default":     false,
+			},
+		},
+		Required: []string{"selector", "assertion"},
+	}
+}
+
+func (t *AssertElementTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	// Add timeout protection
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	
+	type result struct {
+		response *types.CallToolResponse
+		err      error
+	}
+	resultChan := make(chan result, 1)
+	
+	go func() {
+		resp, err := t.executeAssertElement(args)
+		resultChan <- result{resp, err}
+	}()
+	
+	select {
+	case res := <-resultChan:
+		return res.response, res.err
+	case <-ctx.Done():
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: "Element assertion timed out",
+			}},
+			IsError: true,
+		}, nil
+	}
+}
+
+func (t *AssertElementTool) executeAssertElement(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Milliseconds()
+		t.logger.LogToolExecution(t.Name(), args, true, duration)
+	}()
+
+	// Get page ID
+	pageID := ""
+	if val, ok := args["page_id"].(string); ok {
+		pageID = val
+	}
+	
+	if pageID == "" {
+		pages := t.browserMgr.ListPages()
+		if len(pages) == 0 {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: "No pages available for element assertion",
+				}},
+				IsError: true,
+			}, nil
+		}
+		pageID = pages[0]
+	}
+
+	// Get required parameters
+	selector, ok := args["selector"].(string)
+	if !ok || selector == "" {
+		return nil, fmt.Errorf("selector must be provided as a string")
+	}
+
+	assertion, ok := args["assertion"].(string)
+	if !ok || assertion == "" {
+		return nil, fmt.Errorf("assertion must be provided as a string")
+	}
+
+	// Get optional parameters
+	expectedValue := ""
+	if val, ok := args["expected_value"].(string); ok {
+		expectedValue = val
+	}
+
+	attributeName := ""
+	if val, ok := args["attribute_name"].(string); ok {
+		attributeName = val
+	}
+
+	timeout := 5
+	if val, ok := args["timeout"].(float64); ok {
+		timeout = int(val)
+	}
+
+	caseSensitive := false
+	if val, ok := args["case_sensitive"].(bool); ok {
+		caseSensitive = val
+	}
+
+	// Validate required parameters for specific assertions
+	if err := t.validateAssertionParams(assertion, expectedValue, attributeName); err != nil {
+		return nil, err
+	}
+
+	// Wait for element if timeout > 0 and assertion requires element to exist
+	if timeout > 0 && !strings.Contains(assertion, "not_exists") {
+		waitScript := fmt.Sprintf(`
+			const maxWait = %d * 1000;
+			const startTime = Date.now();
+			
+			function checkElement() {
+				const elements = document.querySelectorAll('%s');
+				if (elements.length > 0) {
+					return true;
+				}
+				
+				if (Date.now() - startTime > maxWait) {
+					return false;
+				}
+				
+				return new Promise((resolve) => {
+					setTimeout(() => resolve(checkElement()), 100);
+				});
+			}
+			
+			return checkElement();
+		`, timeout, selector)
+
+		_, err := t.browserMgr.ExecuteScript(pageID, waitScript)
+		if err != nil {
+			// Element not found within timeout, but continue with assertion
+			// The assertion itself will handle the "not found" case
+		}
+	}
+
+	// Perform the assertion
+	result, err := t.performAssertion(pageID, selector, assertion, expectedValue, attributeName, caseSensitive)
+	if err != nil {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Assertion execution failed: %v", err),
+			}},
+			IsError: true,
+		}, nil
+	}
+
+	// Parse the assertion result
+	var assertionData map[string]interface{}
+	if directMap, ok := result.(map[string]interface{}); ok {
+		assertionData = directMap
+	} else if jsonBytes, err := json.Marshal(result); err == nil {
+		if err := json.Unmarshal(jsonBytes, &assertionData); err != nil {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: fmt.Sprintf("Failed to parse assertion result: %v", err),
+				}},
+				IsError: true,
+			}, nil
+		}
+	} else {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Unexpected assertion result format: %T", result),
+			}},
+			IsError: true,
+		}, nil
+	}
+
+	// Extract assertion result
+	passed := false
+	if val, ok := assertionData["passed"].(bool); ok {
+		passed = val
+	}
+
+	message := "Assertion completed"
+	if val, ok := assertionData["message"].(string); ok {
+		message = val
+	}
+
+	// Prepare response data
+	responseData := map[string]interface{}{
+		"passed":         passed,
+		"selector":       selector,
+		"assertion":      assertion,
+		"expected_value": expectedValue,
+		"attribute_name": attributeName,
+		"timeout":        timeout,
+		"case_sensitive": caseSensitive,
+		"page_id":        pageID,
+	}
+
+	// Add any additional data from the assertion
+	for key, value := range assertionData {
+		if key != "passed" && key != "message" {
+			responseData[key] = value
+		}
+	}
+
+	status := "PASS"
+	if !passed {
+		status = "FAIL"
+	}
+
+	finalMessage := fmt.Sprintf("[%s] %s", status, message)
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: finalMessage,
+			Data: responseData,
+		}},
+		IsError: !passed,
+	}, nil
+}
+
+func (t *AssertElementTool) validateAssertionParams(assertion, expectedValue, attributeName string) error {
+	switch assertion {
+	case "contains_text", "exact_text", "not_contains_text":
+		if expectedValue == "" {
+			return fmt.Errorf("expected_value is required for text assertions")
+		}
+	case "has_attribute":
+		if attributeName == "" {
+			return fmt.Errorf("attribute_name is required for has_attribute assertion")
+		}
+	case "attribute_equals", "attribute_contains":
+		if attributeName == "" || expectedValue == "" {
+			return fmt.Errorf("both attribute_name and expected_value are required for attribute assertions")
+		}
+	case "has_class", "not_has_class":
+		if expectedValue == "" {
+			return fmt.Errorf("expected_value is required for class assertions")
+		}
+	case "count_equals", "count_greater_than", "count_less_than":
+		if expectedValue == "" {
+			return fmt.Errorf("expected_value is required for count assertions")
+		}
+	}
+	return nil
+}
+
+func (t *AssertElementTool) performAssertion(pageID, selector, assertion, expectedValue, attributeName string, caseSensitive bool) (interface{}, error) {
+	script := fmt.Sprintf(`
+		const selector = '%s';
+		const assertion = '%s';
+		const expectedValue = '%s';
+		const attributeName = '%s';
+		const caseSensitive = %v;
+		
+		const elements = document.querySelectorAll(selector);
+		const count = elements.length;
+		const element = elements[0]; // First element for single-element assertions
+		
+		let result = {
+			passed: false,
+			message: '',
+			count: count,
+			found_elements: count > 0
+		};
+		
+		try {
+			switch (assertion) {
+				case 'exists':
+					result.passed = count > 0;
+					result.message = count > 0 ? 
+						'Element exists (' + count + ' found)' : 
+						'Element does not exist';
+					break;
+					
+				case 'not_exists':
+					result.passed = count === 0;
+					result.message = count === 0 ? 
+						'Element does not exist (as expected)' : 
+						'Element exists (' + count + ' found) but should not exist';
+					break;
+					
+				case 'visible':
+					if (!element) {
+						result.message = 'Element not found';
+						break;
+					}
+					const isVisible = element.offsetParent !== null && 
+						getComputedStyle(element).visibility !== 'hidden' &&
+						getComputedStyle(element).display !== 'none';
+					result.passed = isVisible;
+					result.message = isVisible ? 'Element is visible' : 'Element is not visible';
+					result.computed_style = {
+						display: getComputedStyle(element).display,
+						visibility: getComputedStyle(element).visibility,
+						opacity: getComputedStyle(element).opacity
+					};
+					break;
+					
+				case 'hidden':
+					if (!element) {
+						result.passed = true;
+						result.message = 'Element not found (considered hidden)';
+						break;
+					}
+					const isHidden = element.offsetParent === null || 
+						getComputedStyle(element).visibility === 'hidden' ||
+						getComputedStyle(element).display === 'none';
+					result.passed = isHidden;
+					result.message = isHidden ? 'Element is hidden' : 'Element is visible';
+					break;
+					
+				case 'enabled':
+					if (!element) {
+						result.message = 'Element not found';
+						break;
+					}
+					const isEnabled = !element.disabled;
+					result.passed = isEnabled;
+					result.message = isEnabled ? 'Element is enabled' : 'Element is disabled';
+					result.disabled = element.disabled;
+					break;
+					
+				case 'disabled':
+					if (!element) {
+						result.message = 'Element not found';
+						break;
+					}
+					const isDisabled = element.disabled;
+					result.passed = isDisabled;
+					result.message = isDisabled ? 'Element is disabled' : 'Element is enabled';
+					result.disabled = element.disabled;
+					break;
+					
+				case 'contains_text':
+					if (!element) {
+						result.message = 'Element not found';
+						break;
+					}
+					const textContent = element.textContent || element.innerText || '';
+					const searchText = caseSensitive ? expectedValue : expectedValue.toLowerCase();
+					const elementText = caseSensitive ? textContent : textContent.toLowerCase();
+					const containsText = elementText.includes(searchText);
+					result.passed = containsText;
+					result.message = containsText ? 
+						'Element contains expected text' : 
+						'Element does not contain expected text';
+					result.actual_text = textContent;
+					result.expected_text = expectedValue;
+					break;
+					
+				case 'exact_text':
+					if (!element) {
+						result.message = 'Element not found';
+						break;
+					}
+					const exactText = element.textContent || element.innerText || '';
+					const expectedExactText = caseSensitive ? expectedValue : expectedValue.toLowerCase();
+					const actualExactText = caseSensitive ? exactText : exactText.toLowerCase();
+					const isExactMatch = actualExactText === expectedExactText;
+					result.passed = isExactMatch;
+					result.message = isExactMatch ? 
+						'Element text matches exactly' : 
+						'Element text does not match exactly';
+					result.actual_text = exactText;
+					result.expected_text = expectedValue;
+					break;
+					
+				case 'not_contains_text':
+					if (!element) {
+						result.passed = true;
+						result.message = 'Element not found (text not contained)';
+						break;
+					}
+					const textToCheck = element.textContent || element.innerText || '';
+					const searchToAvoid = caseSensitive ? expectedValue : expectedValue.toLowerCase();
+					const elementToCheck = caseSensitive ? textToCheck : textToCheck.toLowerCase();
+					const doesNotContain = !elementToCheck.includes(searchToAvoid);
+					result.passed = doesNotContain;
+					result.message = doesNotContain ? 
+						'Element does not contain the text (as expected)' : 
+						'Element contains the text but should not';
+					result.actual_text = textToCheck;
+					result.expected_not_to_contain = expectedValue;
+					break;
+					
+				case 'has_attribute':
+					if (!element) {
+						result.message = 'Element not found';
+						break;
+					}
+					const hasAttr = element.hasAttribute(attributeName);
+					result.passed = hasAttr;
+					result.message = hasAttr ? 
+						'Element has attribute "' + attributeName + '"' : 
+						'Element does not have attribute "' + attributeName + '"';
+					result.attribute_name = attributeName;
+					if (hasAttr) {
+						result.attribute_value = element.getAttribute(attributeName);
+					}
+					break;
+					
+				case 'attribute_equals':
+					if (!element) {
+						result.message = 'Element not found';
+						break;
+					}
+					const attrValue = element.getAttribute(attributeName);
+					const expectedAttrValue = caseSensitive ? expectedValue : expectedValue.toLowerCase();
+					const actualAttrValue = caseSensitive ? (attrValue || '') : (attrValue || '').toLowerCase();
+					const attrEquals = actualAttrValue === expectedAttrValue;
+					result.passed = attrEquals;
+					result.message = attrEquals ? 
+						'Attribute value matches exactly' : 
+						'Attribute value does not match';
+					result.attribute_name = attributeName;
+					result.actual_attribute_value = attrValue;
+					result.expected_attribute_value = expectedValue;
+					break;
+					
+				case 'attribute_contains':
+					if (!element) {
+						result.message = 'Element not found';
+						break;
+					}
+					const attrContent = element.getAttribute(attributeName) || '';
+					const expectedAttrContent = caseSensitive ? expectedValue : expectedValue.toLowerCase();
+					const actualAttrContent = caseSensitive ? attrContent : attrContent.toLowerCase();
+					const attrContains = actualAttrContent.includes(expectedAttrContent);
+					result.passed = attrContains;
+					result.message = attrContains ? 
+						'Attribute contains expected value' : 
+						'Attribute does not contain expected value';
+					result.attribute_name = attributeName;
+					result.actual_attribute_value = attrContent;
+					result.expected_to_contain = expectedValue;
+					break;
+					
+				case 'has_class':
+					if (!element) {
+						result.message = 'Element not found';
+						break;
+					}
+					const hasClass = element.classList.contains(expectedValue);
+					result.passed = hasClass;
+					result.message = hasClass ? 
+						'Element has class "' + expectedValue + '"' : 
+						'Element does not have class "' + expectedValue + '"';
+					result.expected_class = expectedValue;
+					result.actual_classes = Array.from(element.classList);
+					break;
+					
+				case 'not_has_class':
+					if (!element) {
+						result.passed = true;
+						result.message = 'Element not found (class not present)';
+						break;
+					}
+					const doesNotHaveClass = !element.classList.contains(expectedValue);
+					result.passed = doesNotHaveClass;
+					result.message = doesNotHaveClass ? 
+						'Element does not have class "' + expectedValue + '" (as expected)' : 
+						'Element has class "' + expectedValue + '" but should not';
+					result.expected_not_to_have_class = expectedValue;
+					result.actual_classes = Array.from(element.classList);
+					break;
+					
+				case 'is_checked':
+					if (!element) {
+						result.message = 'Element not found';
+						break;
+					}
+					const isChecked = element.checked === true;
+					result.passed = isChecked;
+					result.message = isChecked ? 'Element is checked' : 'Element is not checked';
+					result.checked_state = element.checked;
+					break;
+					
+				case 'is_unchecked':
+					if (!element) {
+						result.passed = true;
+						result.message = 'Element not found (considered unchecked)';
+						break;
+					}
+					const isUnchecked = element.checked === false;
+					result.passed = isUnchecked;
+					result.message = isUnchecked ? 'Element is unchecked' : 'Element is checked';
+					result.checked_state = element.checked;
+					break;
+					
+				case 'count_equals':
+					const expectedCount = parseInt(expectedValue);
+					const countEquals = count === expectedCount;
+					result.passed = countEquals;
+					result.message = countEquals ? 
+						'Element count matches (' + count + ')' : 
+						'Element count (' + count + ') does not match expected (' + expectedCount + ')';
+					result.expected_count = expectedCount;
+					break;
+					
+				case 'count_greater_than':
+					const minCount = parseInt(expectedValue);
+					const countGreater = count > minCount;
+					result.passed = countGreater;
+					result.message = countGreater ? 
+						'Element count (' + count + ') is greater than ' + minCount : 
+						'Element count (' + count + ') is not greater than ' + minCount;
+					result.minimum_count = minCount;
+					break;
+					
+				case 'count_less_than':
+					const maxCount = parseInt(expectedValue);
+					const countLess = count < maxCount;
+					result.passed = countLess;
+					result.message = countLess ? 
+						'Element count (' + count + ') is less than ' + maxCount : 
+						'Element count (' + count + ') is not less than ' + maxCount;
+					result.maximum_count = maxCount;
+					break;
+					
+				default:
+					result.message = 'Unknown assertion type: ' + assertion;
+					break;
+			}
+		} catch (error) {
+			result.message = 'Assertion failed with error: ' + error.message;
+			result.error = error.message;
+		}
+		
+		return result;
+	`, 
+	strings.ReplaceAll(selector, "'", "\\'"),
+	assertion,
+	strings.ReplaceAll(expectedValue, "'", "\\'"),
+	strings.ReplaceAll(attributeName, "'", "\\'"),
+	caseSensitive)
+
+	return t.browserMgr.ExecuteScript(pageID, script)
+}
