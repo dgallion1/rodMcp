@@ -157,18 +157,21 @@ Get interactive help, usage examples, and workflow suggestions for rodmcp tools
 ### 📁 File System Tools
 
 ### 📖 `read_file`
-Read the contents of any file
+Read the contents of any file (with path security)
 - **Purpose**: Load existing files for editing or analysis
+- **Security**: Restricted to working directory by default
 - **Example**: "Read index.html and show me the current structure"
 
 ### ✏️ `write_file`
 Write content to files, creating or overwriting as needed
 - **Purpose**: Save HTML, CSS, JS, or any text files
+- **Security**: Path validation + 10MB file size limit
 - **Example**: "Save this modified CSS to styles.css"
 
 ### 📋 `list_directory`
 List directory contents with file details
 - **Purpose**: Navigate project structure and find files
+- **Security**: Only allows access to permitted directories
 - **Example**: "Show me all files in the src/ directory"
 
 ### 🌐 Network Tools
@@ -364,8 +367,9 @@ While Playwright is excellent for traditional automation, RodMCP is **specifical
 ### 🔒 **Enterprise Ready**
 - **MIT License** - Clean licensing across all dependencies
 - **Go Security** - Memory-safe language with excellent security track record
+- **File Access Control** - Path-based security restrictions with configurable allowlists
 - **No External APIs** - Runs completely locally with stdio transport
-- **Comprehensive Testing** - 26+ automated tests with 100% success rate
+- **Comprehensive Testing** - 31+ automated tests with 100% success rate
 
 ### ⚡ **Technical Advantages**
 | Feature | RodMCP | Playwright MCP |
@@ -692,6 +696,37 @@ type Tool interface {
 ```go
 mcpServer.RegisterTool(webtools.NewYourTool(log, browserMgr))
 ```
+
+## 🔒 Security
+
+RodMCP includes comprehensive security features to protect against unauthorized file access:
+
+### File Access Control
+- **Default**: Restricted to current working directory only
+- **Path Validation**: Prevents directory traversal attacks
+- **File Size Limits**: 10MB default limit for write operations
+- **Configurable Allowlists**: Specify exactly which directories are accessible
+
+### Security Configuration
+```go
+// Default secure configuration (working directory only)
+validator := NewPathValidator(DefaultFileAccessConfig())
+
+// Custom configuration with specific allowed paths
+config := &FileAccessConfig{
+    AllowedPaths: []string{"/safe/project/dir"},
+    DenyPaths:    []string{"/safe/project/dir/secrets"},
+    MaxFileSize:  50 * 1024 * 1024, // 50MB
+}
+```
+
+### Security Features
+- **Absolute Path Resolution**: All paths converted to absolute before validation  
+- **Symlink Following**: Resolves symlinks to prevent bypass attempts
+- **Deny List Priority**: Explicitly blocked paths override allow lists
+- **Comprehensive Logging**: All access attempts logged for audit
+
+See [FILE_ACCESS_SECURITY.md](FILE_ACCESS_SECURITY.md) for detailed security documentation.
 
 ## Contributing
 

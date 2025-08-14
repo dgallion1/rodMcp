@@ -388,13 +388,17 @@ or
 
 ## 📁 File System Tools
 
+**🔒 Security:** All file system tools implement path-based access control. By default, access is restricted to the current working directory only. See [Security](#security) section below.
+
 ### read_file
-**Purpose:** Read contents of files.
+**Purpose:** Read contents of files with security validation.
 
 **Parameters:**
-- `path` (required): Path to file to read
+- `path` (required): Path to file to read (must be within allowed paths)
 
 **Returns:** File contents with metadata
+
+**Security:** Path must be within allowed directories (working directory by default)
 
 **Example:**
 ```json
@@ -407,11 +411,16 @@ or
 **Purpose:** Write content to files, creating or overwriting as needed.
 
 **Parameters:**
-- `path` (required): Path to file to write
-- `content` (required): Content to write
+- `path` (required): Path to file to write (must be within allowed paths)
+- `content` (required): Content to write (subject to size limits)
 - `create_dirs` (optional): Create parent directories (default: false)
 
 **Returns:** Write confirmation with file details
+
+**Security:** 
+- Path must be within allowed directories
+- Content size limited to 10MB by default
+- Parent directory must also be within allowed paths if `create_dirs` is true
 
 **Example:**
 ```json
@@ -423,13 +432,15 @@ or
 ```
 
 ### list_directory
-**Purpose:** List directory contents with details.
+**Purpose:** List directory contents with details and security validation.
 
 **Parameters:**
-- `path` (optional): Directory path (default: current directory)
+- `path` (optional): Directory path (default: current directory, must be within allowed paths)
 - `show_hidden` (optional): Include hidden files (default: false)
 
 **Returns:** Directory listing with file details
+
+**Security:** Directory path must be within allowed directories
 
 **Example:**
 ```json
@@ -651,5 +662,52 @@ Provide guidance and tool discovery.
 ## Integration Notes
 
 RodMCP implements the Model Context Protocol (MCP) specification and communicates via JSON-RPC 2.0. All tools are automatically discovered by MCP clients like Claude Desktop and Claude CLI.
+
+## 🔒 Security
+
+### File Access Control
+
+All file system tools (`read_file`, `write_file`, `list_directory`) implement comprehensive security controls:
+
+#### Default Security Configuration
+- **Access Restricted**: Current working directory only
+- **Path Validation**: Prevents directory traversal attacks  
+- **File Size Limits**: 10MB maximum for write operations
+- **Symlink Resolution**: Follows symlinks to prevent bypasses
+
+#### Security Error Messages
+File access violations return descriptive error messages:
+```
+file access denied: access denied: path /etc/passwd is not in allowed paths
+directory access denied: access denied: path /home/other is in deny list
+file size validation failed: file size 52428800 bytes exceeds maximum allowed size 10485760 bytes
+```
+
+#### Custom Security Configuration
+For advanced use cases, RodMCP supports custom security configurations:
+
+```go
+// Example: Allow specific project directories
+config := &FileAccessConfig{
+    AllowedPaths: []string{
+        "/home/user/projects",
+        "/tmp/workspace"
+    },
+    DenyPaths: []string{
+        "/home/user/projects/.env",  // Block secrets
+        "/home/user/projects/keys"   // Block key files
+    },
+    MaxFileSize: 50 * 1024 * 1024,  // 50MB limit
+}
+```
+
+#### Security Features
+- **Absolute Path Resolution**: All paths converted to absolute before validation
+- **Deny List Priority**: Explicitly blocked paths override allow lists
+- **Working Directory Mode**: Restrict all access to working directory subtree
+- **Temp Directory Control**: Optional access to system temp directory
+- **Comprehensive Logging**: All access attempts logged for audit
+
+See [FILE_ACCESS_SECURITY.md](FILE_ACCESS_SECURITY.md) for complete security documentation.
 
 For development and testing, the comprehensive test suite validates all 26 tools across realistic usage scenarios.

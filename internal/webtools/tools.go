@@ -1338,11 +1338,18 @@ func (t *LivePreviewTool) Execute(args map[string]interface{}) (*types.CallToolR
 
 // ReadFileTool reads file contents
 type ReadFileTool struct {
-	logger *logger.Logger
+	logger    *logger.Logger
+	validator *PathValidator
 }
 
-func NewReadFileTool(log *logger.Logger) *ReadFileTool {
-	return &ReadFileTool{logger: log}
+func NewReadFileTool(log *logger.Logger, validator *PathValidator) *ReadFileTool {
+	if validator == nil {
+		validator = NewPathValidator(DefaultFileAccessConfig())
+	}
+	return &ReadFileTool{
+		logger:    log,
+		validator: validator,
+	}
 }
 
 func (t *ReadFileTool) Name() string {
@@ -1377,6 +1384,14 @@ func (t *ReadFileTool) Execute(args map[string]interface{}) (*types.CallToolResp
 	// Clean the path to prevent directory traversal attacks
 	cleanPath := filepath.Clean(pathStr)
 	
+	// Validate path access permissions
+	if err := t.validator.ValidatePath(cleanPath, "read"); err != nil {
+		t.logger.WithComponent("tools").Warn("File access denied",
+			zap.String("path", cleanPath),
+			zap.Error(err))
+		return nil, fmt.Errorf("file access denied: %w", err)
+	}
+	
 	// Read the file
 	content, err := os.ReadFile(cleanPath)
 	if err != nil {
@@ -1407,11 +1422,18 @@ func (t *ReadFileTool) Execute(args map[string]interface{}) (*types.CallToolResp
 
 // WriteFileTool writes content to files
 type WriteFileTool struct {
-	logger *logger.Logger
+	logger    *logger.Logger
+	validator *PathValidator
 }
 
-func NewWriteFileTool(log *logger.Logger) *WriteFileTool {
-	return &WriteFileTool{logger: log}
+func NewWriteFileTool(log *logger.Logger, validator *PathValidator) *WriteFileTool {
+	if validator == nil {
+		validator = NewPathValidator(DefaultFileAccessConfig())
+	}
+	return &WriteFileTool{
+		logger:    log,
+		validator: validator,
+	}
 }
 
 func (t *WriteFileTool) Name() string {
@@ -1465,9 +1487,33 @@ func (t *WriteFileTool) Execute(args map[string]interface{}) (*types.CallToolRes
 	// Clean the path
 	cleanPath := filepath.Clean(pathStr)
 	
+	// Validate path access permissions
+	if err := t.validator.ValidatePath(cleanPath, "write"); err != nil {
+		t.logger.WithComponent("tools").Warn("File access denied",
+			zap.String("path", cleanPath),
+			zap.Error(err))
+		return nil, fmt.Errorf("file access denied: %w", err)
+	}
+	
+	// Validate file size
+	if err := t.validator.ValidateFileSize(int64(len(content))); err != nil {
+		t.logger.WithComponent("tools").Warn("File size validation failed",
+			zap.String("path", cleanPath),
+			zap.Int("size_bytes", len(content)),
+			zap.Error(err))
+		return nil, fmt.Errorf("file size validation failed: %w", err)
+	}
+	
 	// Create parent directories if requested
 	if createDirs {
 		dir := filepath.Dir(cleanPath)
+		// Also validate that the parent directory is allowed
+		if err := t.validator.ValidatePath(dir, "write"); err != nil {
+			t.logger.WithComponent("tools").Warn("Parent directory access denied",
+				zap.String("dir", dir),
+				zap.Error(err))
+			return nil, fmt.Errorf("parent directory access denied: %w", err)
+		}
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, fmt.Errorf("failed to create directories for %s: %w", cleanPath, err)
 		}
@@ -1503,11 +1549,18 @@ func (t *WriteFileTool) Execute(args map[string]interface{}) (*types.CallToolRes
 
 // ListDirectoryTool lists directory contents
 type ListDirectoryTool struct {
-	logger *logger.Logger
+	logger    *logger.Logger
+	validator *PathValidator
 }
 
-func NewListDirectoryTool(log *logger.Logger) *ListDirectoryTool {
-	return &ListDirectoryTool{logger: log}
+func NewListDirectoryTool(log *logger.Logger, validator *PathValidator) *ListDirectoryTool {
+	if validator == nil {
+		validator = NewPathValidator(DefaultFileAccessConfig())
+	}
+	return &ListDirectoryTool{
+		logger:    log,
+		validator: validator,
+	}
 }
 
 func (t *ListDirectoryTool) Name() string {
@@ -1551,6 +1604,14 @@ func (t *ListDirectoryTool) Execute(args map[string]interface{}) (*types.CallToo
 
 	// Clean the path
 	cleanPath := filepath.Clean(pathStr)
+	
+	// Validate path access permissions
+	if err := t.validator.ValidatePath(cleanPath, "read"); err != nil {
+		t.logger.WithComponent("tools").Warn("Directory access denied",
+			zap.String("path", cleanPath),
+			zap.Error(err))
+		return nil, fmt.Errorf("directory access denied: %w", err)
+	}
 	
 	// Read directory
 	entries, err := os.ReadDir(cleanPath)

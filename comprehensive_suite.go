@@ -141,10 +141,11 @@ func registerAllTools(logr *logger.Logger, browserMgr *browser.Manager, mcpServe
 	// Screen scraping tools
 	tools["screen_scrape"] = webtools.NewScreenScrapeTool(logr, browserMgr)
 
-	// File system tools
-	tools["read_file"] = webtools.NewReadFileTool(logr)
-	tools["write_file"] = webtools.NewWriteFileTool(logr)
-	tools["list_directory"] = webtools.NewListDirectoryTool(logr)
+	// File system tools with path validation
+	fileValidator := webtools.NewPathValidator(webtools.DefaultFileAccessConfig())
+	tools["read_file"] = webtools.NewReadFileTool(logr, fileValidator)
+	tools["write_file"] = webtools.NewWriteFileTool(logr, fileValidator)
+	tools["list_directory"] = webtools.NewListDirectoryTool(logr, fileValidator)
 
 	// Network tools
 	tools["http_request"] = webtools.NewHTTPRequestTool(logr)

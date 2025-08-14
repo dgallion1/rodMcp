@@ -146,10 +146,11 @@ func main() {
 	// Testing and assertion tools
 	mcpServer.RegisterTool(webtools.NewAssertElementTool(log, browserMgr))
 	
-	// File system tools
-	mcpServer.RegisterTool(webtools.NewReadFileTool(log))
-	mcpServer.RegisterTool(webtools.NewWriteFileTool(log))
-	mcpServer.RegisterTool(webtools.NewListDirectoryTool(log))
+	// File system tools with path validation
+	fileValidator := webtools.NewPathValidator(webtools.DefaultFileAccessConfig())
+	mcpServer.RegisterTool(webtools.NewReadFileTool(log, fileValidator))
+	mcpServer.RegisterTool(webtools.NewWriteFileTool(log, fileValidator))
+	mcpServer.RegisterTool(webtools.NewListDirectoryTool(log, fileValidator))
 	
 	// Network tools
 	mcpServer.RegisterTool(webtools.NewHTTPRequestTool(log))
@@ -290,10 +291,11 @@ func startHTTPServer() {
 	// Testing and assertion tools
 	httpServer.RegisterTool(webtools.NewAssertElementTool(log, browserMgr))
 	
-	// File system tools
-	httpServer.RegisterTool(webtools.NewReadFileTool(log))
-	httpServer.RegisterTool(webtools.NewWriteFileTool(log))
-	httpServer.RegisterTool(webtools.NewListDirectoryTool(log))
+	// File system tools with path validation
+	fileValidator2 := webtools.NewPathValidator(webtools.DefaultFileAccessConfig())
+	httpServer.RegisterTool(webtools.NewReadFileTool(log, fileValidator2))
+	httpServer.RegisterTool(webtools.NewWriteFileTool(log, fileValidator2))
+	httpServer.RegisterTool(webtools.NewListDirectoryTool(log, fileValidator2))
 	
 	// Network tools
 	httpServer.RegisterTool(webtools.NewHTTPRequestTool(log))
@@ -409,10 +411,11 @@ func getAllTools() map[string]mcp.Tool {
 	// Testing and assertion tools
 	tools["assert_element"] = webtools.NewAssertElementTool(log, browserMgr)
 	
-	// File system tools
-	tools["read_file"] = webtools.NewReadFileTool(log)
-	tools["write_file"] = webtools.NewWriteFileTool(log)
-	tools["list_directory"] = webtools.NewListDirectoryTool(log)
+	// File system tools with path validation
+	fileValidator3 := webtools.NewPathValidator(webtools.DefaultFileAccessConfig())
+	tools["read_file"] = webtools.NewReadFileTool(log, fileValidator3)
+	tools["write_file"] = webtools.NewWriteFileTool(log, fileValidator3)
+	tools["list_directory"] = webtools.NewListDirectoryTool(log, fileValidator3)
 	
 	// Network tools
 	tools["http_request"] = webtools.NewHTTPRequestTool(log)
