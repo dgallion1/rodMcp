@@ -493,18 +493,32 @@ func listTools() {
 	
 	tools := getAllTools()
 	
-	// Group tools by category
+	// Group tools by category (optimized for LLM clarity)
 	categories := map[string][]string{
 		"🌐 Browser Automation": {
 			"create_page", "navigate_page", "take_screenshot", "take_element_screenshot",
 			"execute_script", "set_browser_visibility", "live_preview",
 		},
-		"🎯 Browser UI Control": {
-			"click_element", "type_text", "keyboard_shortcuts", "switch_tab", "wait", "wait_for_element",
-			"get_element_text", "get_element_attribute", "scroll", "hover_element",
+		"🖱️ Browser Interaction": {
+			"click_element", "type_text", "hover_element", "keyboard_shortcuts",
+		},
+		"📑 Tab Management": {
+			"switch_tab",
+		},
+		"⏳ Timing & Waiting": {
+			"wait", "wait_for_element", "wait_for_condition",
+		},
+		"📖 Data Extraction": {
+			"get_element_text", "get_element_attribute", "scroll",
 		},
 		"🕷️ Screen Scraping": {
 			"screen_scrape", "extract_table",
+		},
+		"📝 Form Automation": {
+			"form_fill",
+		},
+		"🧪 Testing & Assertions": {
+			"assert_element",
 		},
 		"📁 File System": {
 			"read_file", "write_file", "list_directory",

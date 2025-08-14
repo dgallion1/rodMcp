@@ -92,7 +92,7 @@ func (t *HelpTool) Execute(args map[string]interface{}) (*types.CallToolResponse
 func (t *HelpTool) getOverview() string {
 	return `# 🛠️ RodMCP Tools Overview
 
-RodMCP provides 26 comprehensive web development tools organized into 7 categories:
+RodMCP provides 26 comprehensive web development tools organized into 10 focused categories for LLM clarity:
 
 ## 🌐 Browser Automation (7 tools)
 • **create_page** - Generate HTML pages with CSS/JavaScript  
@@ -103,15 +103,24 @@ RodMCP provides 26 comprehensive web development tools organized into 7 categori
 • **live_preview** - Start local development server
 • **set_browser_visibility** - Switch visible/headless modes
 
-## 🎯 UI Control (10 tools)  
+## 🖱️ Browser Interaction (4 tools)
 • **click_element** - Click buttons and links
-• **type_text** - Fill forms and input fields
-• **keyboard_shortcuts** - Send key combinations (Ctrl+C/V, F5, Tab, arrows)
-• **switch_tab** - Multi-tab workflow automation (create, switch, close tabs)
-• **wait** / **wait_for_element** - Handle timing and loading
-• **get_element_text** / **get_element_attribute** - Extract page data
-• **scroll** - Navigate long pages
+• **type_text** - Fill forms and input fields  
 • **hover_element** - Trigger hover effects
+• **keyboard_shortcuts** - Send key combinations (Ctrl+C/V, F5, Tab, arrows)
+
+## 📑 Tab Management (1 tool)
+• **switch_tab** - Multi-tab workflow automation (create, switch, close tabs)
+
+## ⏳ Timing & Waiting (3 tools)
+• **wait** - Pause execution for specified time
+• **wait_for_element** - Wait for elements to appear
+• **wait_for_condition** - Wait for custom JavaScript conditions (animations, APIs, state changes)
+
+## 📖 Data Extraction (3 tools)
+• **get_element_text** - Extract text content from elements
+• **get_element_attribute** - Get element attributes
+• **scroll** - Navigate long pages and bring elements into view
 
 ## 🕷️ Screen Scraping (2 tools)
 • **screen_scrape** - Extract structured data from web pages
@@ -119,9 +128,6 @@ RodMCP provides 26 comprehensive web development tools organized into 7 categori
 
 ## 📝 Form Automation (1 tool)
 • **form_fill** - Complete form automation with validation and submission
-
-## ⚡ Advanced Waiting (1 tool)
-• **wait_for_condition** - Wait for custom JavaScript conditions (animations, APIs, state changes)
 
 ## 🧪 Testing & Assertions (1 tool)
 • **assert_element** - Comprehensive element testing (15+ assertion types)
