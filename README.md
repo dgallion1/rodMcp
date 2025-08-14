@@ -8,6 +8,7 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 - 🔄 **Robust Connection Management** - Automatic reconnection and health monitoring prevents timeout errors
 - 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless (browser visibility fixed!)
 - 🛠️ **26 Comprehensive Tools** - Complete browser control + screen scraping + table extraction + file system + HTTP requests + interactive help
+- 🔧 **Daemon Mode** - Background process prevents Claude blocking with automatic startup/shutdown
 - 🏠 **Easy Install** - No sudo required with local user installation
 - 🚀 **Auto Go Install** - Makefile can install Go locally if not present
 - ⚡ **Go 1.24.5+ Performance** - Fast, reliable browser automation
@@ -342,6 +343,27 @@ rodmcp http --port=8090 --headless --allowed-paths="$WEB_PATHS" --allow-temp --m
 
 # Option C: Custom Config File
 rodmcp http --port=8090 --headless --config="$HOME/.config/rodmcp-security.json"
+
+# Option D: Daemon Mode (Background Process)
+rodmcp http --daemon --pid-file /tmp/rodmcp.pid --port=8090 --headless --log-level=info
+```
+
+**🔧 Daemon Mode Features:**
+- **`--daemon`** - Runs server in background (prevents Claude blocking)
+- **`--pid-file`** - Optional PID file for process management
+- **Graceful shutdown** - Responds to SIGTERM and cleans up automatically
+- **Works with both** - stdio MCP and HTTP server modes
+
+**Daemon Management:**
+```bash
+# Start daemon
+rodmcp --daemon --pid-file /tmp/rodmcp.pid --headless
+
+# Stop daemon gracefully  
+kill -TERM $(cat /tmp/rodmcp.pid)
+
+# Check if running
+ps -p $(cat /tmp/rodmcp.pid) 2>/dev/null && echo "Running" || echo "Stopped"
 ```
 
 **2. Connect to Claude Code:**

@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"rodmcp/internal/browser"
 	"rodmcp/internal/logger"
 	"rodmcp/internal/mcp"
 	"rodmcp/internal/webtools"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -25,6 +27,64 @@ var (
 	Commit    = "unknown"    // Git commit hash
 	BuildDate = "unknown"    // Build timestamp
 )
+
+// daemonize forks the process and runs in the background
+func daemonize(pidFile string) error {
+	// Check if already running as daemon (child process)
+	if os.Getenv("_RODMCP_DAEMON") == "1" {
+		return nil // Already in daemon mode
+	}
+
+	// Fork the process
+	args := append([]string{}, os.Args...)
+	cmd := exec.Command(args[0], args[1:]...)
+	
+	// Set environment variable to identify daemon process
+	cmd.Env = append(os.Environ(), "_RODMCP_DAEMON=1")
+	
+	// Detach from parent terminal
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.Stdin = nil
+	
+	// Start the child process
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start daemon process: %w", err)
+	}
+
+	// Write PID file if specified
+	if pidFile != "" {
+		if err := writePidFile(pidFile, cmd.Process.Pid); err != nil {
+			return fmt.Errorf("failed to write PID file: %w", err)
+		}
+		fmt.Printf("RodMCP daemon started with PID %d (PID file: %s)\n", cmd.Process.Pid, pidFile)
+	} else {
+		fmt.Printf("RodMCP daemon started with PID %d\n", cmd.Process.Pid)
+	}
+
+	// Exit parent process
+	os.Exit(0)
+	return nil
+}
+
+// writePidFile writes the process ID to a file
+func writePidFile(pidFile string, pid int) error {
+	file, err := os.OpenFile(pidFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(strconv.Itoa(pid))
+	return err
+}
+
+// removePidFile removes the PID file
+func removePidFile(pidFile string) {
+	if pidFile != "" {
+		os.Remove(pidFile)
+	}
+}
 
 // loadFileAccessConfig creates file access configuration from command line flags and config file
 func loadFileAccessConfig(configFile, allowedPaths, denyPaths string, allowTemp, restrictToWorkDir bool, maxFileSize int64) (*webtools.FileAccessConfig, error) {
@@ -113,6 +173,8 @@ func main() {
 		slowMotion   = flag.Duration("slow-motion", 0, "Slow motion delay between actions")
 		windowWidth  = flag.Int("window-width", 1920, "Browser window width")
 		windowHeight = flag.Int("window-height", 1080, "Browser window height")
+		daemon       = flag.Bool("daemon", false, "Run in daemon mode (background process)")
+		pidFile      = flag.String("pid-file", "", "Path to PID file for daemon mode")
 		
 		// File access configuration flags
 		configFile        = flag.String("config", "", "Path to configuration file (JSON format)")
@@ -123,6 +185,15 @@ func main() {
 		maxFileSize       = flag.Int64("max-file-size", 10485760, "Maximum file size in bytes (default: 10MB)")
 	)
 	flag.Parse()
+
+	// Handle daemon mode
+	if *daemon {
+		if err := daemonize(*pidFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to start daemon: %v\n", err)
+			os.Exit(1)
+		}
+		// If we reach here, we're in the child process
+	}
 
 	// Initialize logger
 	logConfig := logger.Config{
@@ -264,6 +335,11 @@ func main() {
 
 	log.Info("Shutting down RodMCP server")
 	
+	// Remove PID file if in daemon mode
+	if *daemon {
+		removePidFile(*pidFile)
+	}
+	
 	// Gracefully stop the MCP server
 	if err := mcpServer.Stop(); err != nil {
 		log.Error("Error stopping MCP server", zap.Error(err))
@@ -281,6 +357,8 @@ func startHTTPServer() {
 		slowMotion   = flag.Duration("slow-motion", 0, "Slow motion delay between actions")
 		windowWidth  = flag.Int("window-width", 1920, "Browser window width")
 		windowHeight = flag.Int("window-height", 1080, "Browser window height")
+		daemon       = flag.Bool("daemon", false, "Run in daemon mode (background process)")
+		pidFile      = flag.String("pid-file", "", "Path to PID file for daemon mode")
 		
 		// File access configuration flags
 		configFile        = flag.String("config", "", "Path to configuration file (JSON format)")
@@ -291,6 +369,15 @@ func startHTTPServer() {
 		maxFileSize       = flag.Int64("max-file-size", 10485760, "Maximum file size in bytes (default: 10MB)")
 	)
 	flag.CommandLine.Parse(os.Args[2:]) // Skip "rodmcp http"
+
+	// Handle daemon mode
+	if *daemon {
+		if err := daemonize(*pidFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to start daemon: %v\n", err)
+			os.Exit(1)
+		}
+		// If we reach here, we're in the child process
+	}
 
 	// Initialize logger
 	logConfig := logger.Config{
@@ -431,6 +518,12 @@ func startHTTPServer() {
 	}
 
 	log.Info("Shutting down RodMCP HTTP server")
+	
+	// Remove PID file if in daemon mode
+	if *daemon {
+		removePidFile(*pidFile)
+	}
+	
 	if err := httpServer.Stop(); err != nil {
 		log.Error("Error stopping HTTP server", zap.Error(err))
 	}
@@ -559,6 +652,10 @@ COMMANDS:
     --window-width WIDTH  Browser window width in pixels (default: 1920)
     --window-height HEIGHT Browser window height in pixels (default: 1080)
 
+⚙️  PROCESS MANAGEMENT FLAGS:
+    --daemon              Run server in daemon mode (background process)
+    --pid-file FILE       Path to PID file for daemon mode (optional)
+
 📁 FILE ACCESS SECURITY FLAGS:
     --config FILE         Path to JSON configuration file for advanced settings
     --allowed-paths PATHS Comma-separated list of allowed directory paths
@@ -621,6 +718,7 @@ ENVIRONMENT VARIABLES:
     %s                                    # Stdio MCP (Claude Desktop)
     %s http                              # HTTP MCP server on port 8080
     %s http --port 3000                  # HTTP server on custom port
+    %s --daemon --pid-file /var/run/rodmcp.pid  # Run as background daemon
 
     Tool Discovery & Documentation:
     %s list-tools                        # Show all 26 available tools
