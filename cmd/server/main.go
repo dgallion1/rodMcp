@@ -670,9 +670,9 @@ ENVIRONMENT VARIABLES:
     
     Version: %s | Build: %s | Go: 1.24.5+ | MCP: 2024-11-05
 `, 
-		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0],
-		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0],
-		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], Version, Commit)
+		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], 
+		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], 
+		os.Args[0], os.Args[0], os.Args[0], Version, Commit)
 }
 
 func listTools() {

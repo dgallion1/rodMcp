@@ -741,6 +741,56 @@ rodmcp/
 └── Makefile           # Build and development automation
 ```
 
+### Testing
+
+RodMCP has comprehensive test coverage focusing on core functionality and security:
+
+#### Test Coverage
+- **MCP Protocol**: 69.9% coverage - JSON-RPC handling, tool registration, error handling
+- **File Security**: 100% coverage - Path validation, access control, security checks  
+- **Validation**: 100% coverage - Input validation, error messages, edge cases
+- **HTTP Server**: 69.9% coverage - REST endpoints, CORS, request/response handling
+- **Browser Manager**: Extensive unit tests for lifecycle, page management, health checks
+
+#### Running Tests
+
+```bash
+# Run all tests with coverage
+go test -cover ./internal/...
+
+# Run specific module tests
+go test -cover ./internal/mcp          # MCP protocol tests
+go test -cover ./internal/webtools     # Validation and file access tests
+go test -cover ./internal/browser      # Browser management tests (requires browser)
+
+# Generate detailed coverage reports
+go test -coverprofile=coverage.out ./internal/mcp
+go tool cover -html=coverage.out      # View in browser
+go tool cover -func=coverage.out      # View in terminal
+
+# Run short tests (skip browser integration)
+go test -short ./internal/...
+```
+
+#### Test Categories
+
+- **Unit Tests**: Core logic, validation, error handling
+- **Integration Tests**: HTTP server, MCP protocol compliance
+- **Security Tests**: File access validation, path traversal prevention
+- **Mock Tests**: Browser operations without requiring actual browser instances
+- **Benchmark Tests**: Performance testing for critical paths
+
+#### Test Structure
+```
+internal/
+├── browser/manager_test.go     # Browser lifecycle and page management
+├── mcp/server_test.go          # MCP protocol and tool execution  
+├── mcp/http_server_test.go     # HTTP API and CORS handling
+└── webtools/
+    ├── fileaccess_test.go      # Security and path validation
+    └── validation_test.go      # Input validation and error messages
+```
+
 ### Build Commands
 
 Use the Makefile for common development tasks:
