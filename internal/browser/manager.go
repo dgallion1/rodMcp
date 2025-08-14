@@ -83,13 +83,38 @@ func (m *Manager) Start(config Config) error {
 		l = l.Devtools(true)
 	}
 
-	// Launch browser
-	url, err := l.Launch()
-	if err != nil {
+	// Launch browser with timeout
+	launchCtx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+	defer cancel()
+	
+	urlChan := make(chan string, 1)
+	errChan := make(chan error, 1)
+	
+	go func() {
+		url, err := l.Launch()
+		if err != nil {
+			errChan <- err
+		} else {
+			urlChan <- url
+		}
+	}()
+	
+	var url string
+	var launchErr error
+	select {
+	case url = <-urlChan:
+		// Browser launched successfully
+	case launchErr = <-errChan:
+		// Handle launch error below
+	case <-launchCtx.Done():
+		return fmt.Errorf("browser launch timed out after 30 seconds - check browser binary and system dependencies")
+	}
+	
+	if launchErr != nil {
 		// If browser launch failed and we have a specific binary, try Rod's fallback
 		if browserPath != "" {
 			m.logger.WithComponent("browser").Warn("System browser failed, trying Rod's browser download", 
-				zap.String("failed_path", browserPath), zap.Error(err))
+				zap.String("failed_path", browserPath), zap.Error(launchErr))
 			
 			// Try again with Rod's browser download
 			l = launcher.New().
@@ -104,29 +129,54 @@ func (m *Manager) Start(config Config) error {
 				l = l.Devtools(true)
 			}
 			
-			url, err = l.Launch()
-			if err != nil {
-				return fmt.Errorf("failed to launch browser (system: %s failed, Rod download also failed): %w", browserPath, err)
+			// Try fallback launch with timeout
+			urlChan2 := make(chan string, 1)
+			errChan2 := make(chan error, 1)
+			
+			go func() {
+				url, err := l.Launch()
+				if err != nil {
+					errChan2 <- err
+				} else {
+					urlChan2 <- url
+				}
+			}()
+			
+			select {
+			case url = <-urlChan2:
+				// Fallback browser launched successfully
+			case launchErr = <-errChan2:
+				return fmt.Errorf("failed to launch browser (system: %s failed, Rod download also failed): %w", browserPath, launchErr)
+			case <-launchCtx.Done():
+				return fmt.Errorf("fallback browser launch timed out after 30 seconds")
 			}
 			
 			m.logger.WithComponent("browser").Info("Successfully using Rod's browser download as fallback")
 		} else {
 			// Provide more helpful error message for dependency issues
-			errStr := err.Error()
+			errStr := launchErr.Error()
 			if strings.Contains(errStr, "cannot open shared object file") || strings.Contains(errStr, "not found") {
-				return fmt.Errorf("browser launch failed due to missing system dependencies. Please install required libraries or ensure a compatible browser is available: %w", err)
+				return fmt.Errorf("browser launch failed due to missing system dependencies. Please install required libraries or ensure a compatible browser is available: %w", launchErr)
 			}
-			return fmt.Errorf("failed to launch browser: %w", err)
+			return fmt.Errorf("failed to launch browser: %w", launchErr)
 		}
 	}
 
-	// Connect to browser
+	// Connect to browser with timeout
 	browser := rod.New().ControlURL(url).Context(m.ctx)
 	if config.SlowMotion > 0 {
 		browser = browser.SlowMotion(config.SlowMotion)
 	}
 
-	if err := browser.Connect(); err != nil {
+	// Add connection timeout context
+	connectCtx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+	defer cancel()
+	
+	browserWithTimeout := browser.Context(connectCtx)
+	if err := browserWithTimeout.Connect(); err != nil {
+		if connectCtx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("browser connection timed out after 30 seconds - check if browser process is responsive")
+		}
 		return fmt.Errorf("failed to connect to browser: %w", err)
 	}
 
@@ -527,11 +577,19 @@ func (m *Manager) isBrowserWorking(browserPath string) bool {
 		return false
 	}
 	
-	// Try to run browser with --version to check if dependencies are available
-	cmd := exec.Command(browserPath, "--version")
+	// Try to run browser with --version to check if dependencies are available (with timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
+	cmd := exec.CommandContext(ctx, browserPath, "--version")
 	if err := cmd.Run(); err != nil {
-		m.logger.WithComponent("browser").Debug("Browser binary failed version check", 
-			zap.String("path", browserPath), zap.Error(err))
+		if ctx.Err() == context.DeadlineExceeded {
+			m.logger.WithComponent("browser").Debug("Browser binary version check timed out", 
+				zap.String("path", browserPath))
+		} else {
+			m.logger.WithComponent("browser").Debug("Browser binary failed version check", 
+				zap.String("path", browserPath), zap.Error(err))
+		}
 		return false
 	}
 	

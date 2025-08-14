@@ -20,6 +20,20 @@ import (
 	"go.uber.org/zap"
 )
 
+// Helper function to create a consistent error response when no pages are available
+func createNoPagesErrorResponse(toolName string) *types.CallToolResponse {
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("No browser pages are currently open. To use `%s`, you first need to:\n\n"+
+				"1. Create a page: use `create_page` to make a new HTML page, or\n"+
+				"2. Navigate to a URL: use `navigate_page` to load an existing website\n\n"+
+				"Then you can interact with elements on the page.", toolName),
+		}},
+		IsError: true,
+	}
+}
+
 // CreatePageTool creates HTML pages
 type CreatePageTool struct {
 	logger *logger.Logger
@@ -1206,13 +1220,7 @@ func (t *ExecuteScriptTool) Execute(args map[string]interface{}) (*types.CallToo
 			// Use first available page
 			pages := t.browser.ListPages()
 			if len(pages) == 0 {
-				resultChan <- result{&types.CallToolResponse{
-					Content: []types.ToolContent{{
-						Type: "text",
-						Text: "No pages available for script execution",
-					}},
-					IsError: true,
-				}, nil}
+				resultChan <- result{createNoPagesErrorResponse("execute_script"), nil}
 				return
 			}
 			pageID = pages[0]
@@ -1493,8 +1501,44 @@ func (t *ReadFileTool) Execute(args map[string]interface{}) (*types.CallToolResp
 		return nil, fmt.Errorf("file access denied: %w", err)
 	}
 	
-	// Read the file
-	content, err := os.ReadFile(cleanPath)
+	// Check file size before reading
+	fileInfo, err := os.Stat(cleanPath)
+	if err != nil {
+		t.logger.WithComponent("tools").Error("Failed to get file info",
+			zap.String("path", cleanPath),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to access file %s: %w", cleanPath, err)
+	}
+	
+	// Use the configured max file size from the validator
+	maxSize := t.validator.config.MaxFileSize
+	if fileInfo.Size() > maxSize {
+		return nil, fmt.Errorf("file %s is too large (%d bytes) - maximum allowed size is %d bytes", 
+			cleanPath, fileInfo.Size(), maxSize)
+	}
+	
+	// Read the file with timeout context
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	
+	type readResult struct {
+		content []byte
+		err     error
+	}
+	resultChan := make(chan readResult, 1)
+	
+	go func() {
+		content, err := os.ReadFile(cleanPath)
+		resultChan <- readResult{content, err}
+	}()
+	
+	var content []byte
+	select {
+	case result := <-resultChan:
+		content, err = result.content, result.err
+	case <-ctx.Done():
+		return nil, fmt.Errorf("file read timed out after 30 seconds: %s", cleanPath)
+	}
 	if err != nil {
 		t.logger.WithComponent("tools").Error("Failed to read file",
 			zap.String("path", cleanPath),
@@ -1620,13 +1664,40 @@ func (t *WriteFileTool) Execute(args map[string]interface{}) (*types.CallToolRes
 		}
 	}
 
-	// Write the file
-	err := os.WriteFile(cleanPath, []byte(content), 0644)
-	if err != nil {
+	// Check content size before writing
+	contentSize := int64(len(content))
+	maxSize := t.validator.config.MaxFileSize
+	if contentSize > maxSize {
+		return nil, fmt.Errorf("content is too large (%d bytes) - maximum allowed size is %d bytes", 
+			contentSize, maxSize)
+	}
+	
+	// Write the file with timeout context
+	writeCtx, writeCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer writeCancel()
+	
+	type writeResult struct {
+		err error
+	}
+	writeResultChan := make(chan writeResult, 1)
+	
+	go func() {
+		err := os.WriteFile(cleanPath, []byte(content), 0644)
+		writeResultChan <- writeResult{err}
+	}()
+	
+	var writeErr error
+	select {
+	case result := <-writeResultChan:
+		writeErr = result.err
+	case <-writeCtx.Done():
+		return nil, fmt.Errorf("file write timed out after 30 seconds: %s", cleanPath)
+	}
+	if writeErr != nil {
 		t.logger.WithComponent("tools").Error("Failed to write file",
 			zap.String("path", cleanPath),
-			zap.Error(err))
-		return nil, fmt.Errorf("failed to write file %s: %w", cleanPath, err)
+			zap.Error(writeErr))
+		return nil, fmt.Errorf("failed to write file %s: %w", cleanPath, writeErr)
 	}
 
 	duration := time.Since(start).Milliseconds()
@@ -2034,13 +2105,7 @@ func (t *ClickElementTool) Execute(args map[string]interface{}) (*types.CallTool
 		// Use first available page if no specific page ID provided
 		pages := t.browserMgr.ListPages()
 		if len(pages) == 0 {
-			return &types.CallToolResponse{
-				Content: []types.ToolContent{{
-					Type: "text",
-					Text: "No pages available for element interaction",
-				}},
-				IsError: true,
-			}, nil
+			return createNoPagesErrorResponse("click_element"), nil
 		}
 		pageID = pages[0]
 	}
@@ -2160,13 +2225,7 @@ func (t *TypeTextTool) Execute(args map[string]interface{}) (*types.CallToolResp
 		// Use first available page if no specific page ID provided
 		pages := t.browserMgr.ListPages()
 		if len(pages) == 0 {
-			return &types.CallToolResponse{
-				Content: []types.ToolContent{{
-					Type: "text",
-					Text: "No pages available for text input",
-				}},
-				IsError: true,
-			}, nil
+			return createNoPagesErrorResponse("type_text"), nil
 		}
 		pageID = pages[0]
 	}
@@ -2353,13 +2412,7 @@ func (t *WaitForElementTool) Execute(args map[string]interface{}) (*types.CallTo
 		// Use first available page if no specific page ID provided
 		pages := t.browserMgr.ListPages()
 		if len(pages) == 0 {
-			return &types.CallToolResponse{
-				Content: []types.ToolContent{{
-					Type: "text",
-					Text: "No pages available for waiting for element",
-				}},
-				IsError: true,
-			}, nil
+			return createNoPagesErrorResponse("wait_for_element"), nil
 		}
 		pageID = pages[0]
 	}
@@ -2482,13 +2535,7 @@ func (t *GetElementTextTool) Execute(args map[string]interface{}) (*types.CallTo
 		// Use first available page if no specific page ID provided
 		pages := t.browserMgr.ListPages()
 		if len(pages) == 0 {
-			return &types.CallToolResponse{
-				Content: []types.ToolContent{{
-					Type: "text",
-					Text: "No pages available for getting element text",
-				}},
-				IsError: true,
-			}, nil
+			return createNoPagesErrorResponse("get_element_text"), nil
 		}
 		pageID = pages[0]
 	}
