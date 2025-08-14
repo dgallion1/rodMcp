@@ -1,6 +1,6 @@
 # RodMCP API Reference
 
-Complete reference documentation for all 23 RodMCP tools, organized by category with detailed parameters, examples, and usage patterns.
+Complete reference documentation for all 25 RodMCP tools, organized by category with detailed parameters, examples, and usage patterns.
 
 ## 🌐 Browser Automation Tools
 
@@ -55,6 +55,38 @@ Complete reference documentation for all 23 RodMCP tools, organized by category 
 ```json
 {
   "filename": "portfolio-screenshot.png"
+}
+```
+
+### take_element_screenshot 🔥 NEW
+**Purpose:** Capture screenshots of specific elements with smart positioning and visibility handling.
+
+**Parameters:**
+- `selector` (required): CSS selector for the element to screenshot
+- `page_id` (optional): Page ID to screenshot from
+- `filename` (optional): Filename to save screenshot
+- `padding` (optional): Padding around element in pixels (default: 10)
+- `scroll_into_view` (optional): Scroll element into view (default: true)
+- `wait_for_element` (optional): Wait for element visibility (default: true)
+- `timeout` (optional): Maximum wait time in seconds (default: 10)
+
+**Returns:** Base64 encoded image with element details
+
+**Examples:**
+```json
+{
+  "selector": "#submit-button",
+  "filename": "button-state.png",
+  "padding": 15
+}
+```
+
+```json
+{
+  "selector": ".error-message",
+  "wait_for_element": true,
+  "timeout": 5,
+  "padding": 20
 }
 ```
 
@@ -255,6 +287,44 @@ or
   "selector": ".dropdown-menu"
 }
 ```
+
+### keyboard_shortcuts
+**Purpose:** Send keyboard combinations and special keys to web pages.
+
+**Parameters:**
+- `keys` (required): Key combination to send (e.g., "Ctrl+C", "F5", "Tab", "Enter")
+- `selector` (optional): CSS selector to target specific element
+- `page_id` (optional): Page ID to send keys to
+- `timeout` (optional): Timeout in seconds (default: 10)
+
+**Returns:** Key combination execution confirmation
+
+**Examples:**
+```json
+{
+  "keys": "Ctrl+C"
+}
+```
+
+```json
+{
+  "keys": "Tab",
+  "selector": "#input-field"
+}
+```
+
+```json
+{
+  "keys": "F5"
+}
+```
+
+**Supported Key Combinations:**
+- **Shortcuts:** Ctrl+C, Ctrl+V, Ctrl+A, Ctrl+Z, Ctrl+Y, Ctrl+S, Ctrl+F, Ctrl+R
+- **Navigation:** Tab, Shift+Tab, Enter, Escape, Backspace, Delete
+- **Arrow Keys:** ArrowUp, ArrowDown, ArrowLeft, ArrowRight
+- **Function Keys:** F1-F12 (F5, F11, F12 commonly used)
+- **Special Keys:** Space, Home, End, PageUp, PageDown
 
 ## 📁 File System Tools
 
@@ -465,10 +535,10 @@ When errors occur, tools return:
 
 ## Tool Categories
 
-### Browser Automation (6 tools)
+### Browser Automation (7 tools)
 Focus on page creation, navigation, and core browser operations.
 
-### UI Control (8 tools)  
+### UI Control (9 tools)  
 Handle user interactions, element manipulation, and page state.
 
 ### File System (3 tools)
@@ -522,4 +592,4 @@ Provide guidance and tool discovery.
 
 RodMCP implements the Model Context Protocol (MCP) specification and communicates via JSON-RPC 2.0. All tools are automatically discovered by MCP clients like Claude Desktop and Claude CLI.
 
-For development and testing, the comprehensive test suite validates all 23 tools across realistic usage scenarios.
+For development and testing, the comprehensive test suite validates all 25 tools across realistic usage scenarios.

@@ -92,19 +92,21 @@ func (t *HelpTool) Execute(args map[string]interface{}) (*types.CallToolResponse
 func (t *HelpTool) getOverview() string {
 	return `# 🛠️ RodMCP Tools Overview
 
-RodMCP provides 23 comprehensive web development tools organized into 7 categories:
+RodMCP provides 25 comprehensive web development tools organized into 7 categories:
 
-## 🌐 Browser Automation (6 tools)
+## 🌐 Browser Automation (7 tools)
 • **create_page** - Generate HTML pages with CSS/JavaScript  
 • **navigate_page** - Open URLs and local files
 • **execute_script** - Run JavaScript in browser pages
 • **take_screenshot** - Capture visual snapshots
+• **take_element_screenshot** - Capture specific elements
 • **live_preview** - Start local development server
 • **set_browser_visibility** - Switch visible/headless modes
 
-## 🎯 UI Control (8 tools)  
+## 🎯 UI Control (9 tools)  
 • **click_element** - Click buttons and links
 • **type_text** - Fill forms and input fields
+• **keyboard_shortcuts** - Send key combinations (Ctrl+C/V, F5, Tab, arrows)
 • **wait** / **wait_for_element** - Handle timing and loading
 • **get_element_text** / **get_element_attribute** - Extract page data
 • **scroll** - Navigate long pages
@@ -187,6 +189,15 @@ assert_element:
   case_sensitive: false
 ` + "```" + `
 
+## 📸 Element Screenshot Capture
+` + "```" + `
+take_element_screenshot:
+  selector: ".error-message"
+  filename: "error-state.png"
+  padding: 20
+  wait_for_element: true
+` + "```" + `
+
 ## 📊 Table Data Extraction
 ` + "```" + `
 extract_table:
@@ -226,6 +237,8 @@ extract_table:
 🔥 **Pro Tip**: Combine form_fill + wait_for_condition + assert_element for robust automation workflows!
 
 🔥 **New Pro Tip**: Use extract_table + screen_scrape for comprehensive data extraction workflows!
+
+🔥 **Latest Pro Tip**: Use take_element_screenshot for focused UI testing and bug documentation!
 
 Use help [tool_name] for detailed tool-specific examples!`
 }

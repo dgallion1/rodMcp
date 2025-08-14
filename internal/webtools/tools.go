@@ -397,6 +397,640 @@ func (t *ScreenshotTool) Execute(args map[string]interface{}) (*types.CallToolRe
 	}, nil
 }
 
+// TakeElementScreenshotTool captures screenshots of specific elements
+type TakeElementScreenshotTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewTakeElementScreenshotTool(log *logger.Logger, browserMgr *browser.Manager) *TakeElementScreenshotTool {
+	return &TakeElementScreenshotTool{
+		logger:     log,
+		browserMgr: browserMgr,
+	}
+}
+
+func (t *TakeElementScreenshotTool) Name() string {
+	return "take_element_screenshot"
+}
+
+func (t *TakeElementScreenshotTool) Description() string {
+	return "Take a screenshot of a specific element on the page"
+}
+
+func (t *TakeElementScreenshotTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"selector": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector for the element to screenshot",
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Page ID to screenshot from (optional, uses current page if not specified)",
+			},
+			"filename": map[string]interface{}{
+				"type":        "string",
+				"description": "Filename to save screenshot (optional)",
+			},
+			"padding": map[string]interface{}{
+				"type":        "integer",
+				"description": "Padding around the element in pixels (default: 10)",
+				"default":     10,
+				"minimum":     0,
+				"maximum":     100,
+			},
+			"scroll_into_view": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Scroll element into view before screenshot (default: true)",
+				"default":     true,
+			},
+			"wait_for_element": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Wait for element to be visible before screenshot (default: true)",
+				"default":     true,
+			},
+			"timeout": map[string]interface{}{
+				"type":        "integer",
+				"description": "Maximum time to wait for element in seconds (default: 10)",
+				"default":     10,
+				"minimum":     1,
+				"maximum":     60,
+			},
+		},
+		Required: []string{"selector"},
+	}
+}
+
+func (t *TakeElementScreenshotTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Milliseconds()
+		t.logger.LogToolExecution(t.Name(), args, true, duration)
+	}()
+
+	// Add timeout protection
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Parse arguments
+	selector, ok := args["selector"].(string)
+	if !ok {
+		return nil, fmt.Errorf("selector is required")
+	}
+
+	pageID, _ := args["page_id"].(string)
+	filename, _ := args["filename"].(string)
+
+	padding := 10
+	if val, ok := args["padding"].(float64); ok {
+		padding = int(val)
+	}
+
+	scrollIntoView := true
+	if val, ok := args["scroll_into_view"].(bool); ok {
+		scrollIntoView = val
+	}
+
+	waitForElement := true
+	if val, ok := args["wait_for_element"].(bool); ok {
+		waitForElement = val
+	}
+
+	timeout := 10
+	if val, ok := args["timeout"].(float64); ok {
+		timeout = int(val)
+	}
+
+	// Execute screenshot in goroutine with timeout
+	resultChan := make(chan *types.CallToolResponse, 1)
+	errorChan := make(chan error, 1)
+
+	go func() {
+		result, err := t.captureElementScreenshot(pageID, selector, filename, padding, scrollIntoView, waitForElement, timeout)
+		if err != nil {
+			errorChan <- err
+			return
+		}
+		resultChan <- result
+	}()
+
+	// Wait for result or timeout
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("element screenshot operation timed out after 60 seconds")
+	case err := <-errorChan:
+		return nil, err
+	case result := <-resultChan:
+		return result, nil
+	}
+}
+
+func (t *TakeElementScreenshotTool) captureElementScreenshot(pageID, selector, filename string, padding int, scrollIntoView, waitForElement bool, timeout int) (*types.CallToolResponse, error) {
+	// First, find and prepare the element
+	script := fmt.Sprintf(`
+		// Find the target element
+		const element = document.querySelector('%s');
+		if (!element) {
+			return { error: 'Element not found with selector: %s' };
+		}
+
+		// Wait for element to be visible if requested
+		const waitForVisible = %t;
+		const timeoutMs = %d * 1000;
+		
+		if (waitForVisible) {
+			const startTime = Date.now();
+			
+			// Check if element is visible
+			function isVisible(el) {
+				const rect = el.getBoundingClientRect();
+				const style = window.getComputedStyle(el);
+				return rect.width > 0 && 
+					   rect.height > 0 && 
+					   style.display !== 'none' && 
+					   style.visibility !== 'hidden' && 
+					   style.opacity !== '0';
+			}
+			
+			// Wait for visibility with timeout
+			while (!isVisible(element)) {
+				if (Date.now() - startTime > timeoutMs) {
+					return { error: 'Element not visible within timeout period' };
+				}
+				// Small delay to prevent busy waiting
+				await new Promise(resolve => setTimeout(resolve, 100));
+			}
+		}
+
+		// Scroll element into view if requested
+		const shouldScroll = %t;
+		if (shouldScroll) {
+			element.scrollIntoView({ 
+				behavior: 'auto', 
+				block: 'center', 
+				inline: 'center' 
+			});
+			// Wait a moment for scroll to complete
+			await new Promise(resolve => setTimeout(resolve, 200));
+		}
+
+		// Get element position and dimensions
+		const rect = element.getBoundingClientRect();
+		const padding = %d;
+		
+		// Calculate screenshot bounds with padding
+		const bounds = {
+			x: Math.max(0, rect.left - padding),
+			y: Math.max(0, rect.top - padding),
+			width: rect.width + (padding * 2),
+			height: rect.height + (padding * 2)
+		};
+		
+		// Ensure bounds don't exceed viewport
+		bounds.width = Math.min(bounds.width, window.innerWidth - bounds.x);
+		bounds.height = Math.min(bounds.height, window.innerHeight - bounds.y);
+
+		return {
+			success: true,
+			bounds: bounds,
+			element_info: {
+				tag_name: element.tagName,
+				id: element.id,
+				class_name: element.className,
+				text_content: element.textContent?.slice(0, 100) // First 100 chars
+			}
+		};
+	`,
+	strings.ReplaceAll(selector, "'", "\\'"),
+	strings.ReplaceAll(selector, "'", "\\'"),
+	waitForElement,
+	timeout,
+	scrollIntoView,
+	padding)
+
+	result, err := t.browserMgr.ExecuteScript(pageID, script)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare element for screenshot: %w", err)
+	}
+
+	// Parse the JavaScript result
+	var jsResult map[string]interface{}
+	resultStr, ok := result.(string)
+	if !ok {
+		return nil, fmt.Errorf("unexpected result type from JavaScript execution")
+	}
+	if err := json.Unmarshal([]byte(resultStr), &jsResult); err != nil {
+		return nil, fmt.Errorf("failed to parse element preparation result: %w", err)
+	}
+
+	// Check for errors
+	if errorMsg, exists := jsResult["error"]; exists {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Element screenshot failed: %v", errorMsg),
+			}},
+		}, nil
+	}
+
+	// Extract bounds information
+	boundsData, ok := jsResult["bounds"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid bounds data returned from JavaScript")
+	}
+
+	// Get element info for metadata
+	elementInfo, _ := jsResult["element_info"].(map[string]interface{})
+
+	// Take the full page screenshot first
+	fullScreenshot, err := t.browserMgr.Screenshot(pageID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to take full page screenshot: %w", err)
+	}
+
+	// For now, we'll return the full screenshot with bounds info
+	// TODO: In a future enhancement, we could crop the image to just the element bounds
+	
+	// If filename is provided, save the screenshot
+	if filename != "" {
+		if err := os.WriteFile(filename, fullScreenshot, 0644); err != nil {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: fmt.Sprintf("Failed to save element screenshot: %v", err),
+				}},
+				IsError: true,
+			}, nil
+		}
+
+		responseText := fmt.Sprintf("Element screenshot saved to %s", filename)
+		if elementInfo != nil {
+			responseText += fmt.Sprintf("\n\nElement details:\n- Tag: %v\n- ID: %v\n- Classes: %v",
+				elementInfo["tag_name"], elementInfo["id"], elementInfo["class_name"])
+			if textContent, ok := elementInfo["text_content"].(string); ok && textContent != "" {
+				responseText += fmt.Sprintf("\n- Text: %s", textContent)
+			}
+		}
+		if boundsData != nil {
+			responseText += fmt.Sprintf("\n\nScreenshot bounds:\n- X: %.0f, Y: %.0f\n- Width: %.0f, Height: %.0f",
+				boundsData["x"], boundsData["y"], boundsData["width"], boundsData["height"])
+		}
+
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: responseText,
+				Data: map[string]interface{}{
+					"filename": filename,
+					"bounds":   boundsData,
+					"element":  elementInfo,
+				},
+			}},
+		}, nil
+	}
+
+	// Return base64 encoded image with element metadata
+	encoded := base64.StdEncoding.EncodeToString(fullScreenshot)
+	
+	responseText := "Element screenshot captured"
+	if elementInfo != nil {
+		responseText += fmt.Sprintf("\n\nElement: %v", elementInfo["tag_name"])
+		if id, ok := elementInfo["id"].(string); ok && id != "" {
+			responseText += fmt.Sprintf("#%s", id)
+		}
+		if className, ok := elementInfo["class_name"].(string); ok && className != "" {
+			responseText += fmt.Sprintf(".%s", strings.ReplaceAll(className, " ", "."))
+		}
+	}
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type:     "image",
+			Data:     encoded,
+			MimeType: "image/png",
+		}},
+	}, nil
+}
+
+// KeyboardShortcutTool sends keyboard combinations and special keys
+type KeyboardShortcutTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewKeyboardShortcutTool(log *logger.Logger, browserMgr *browser.Manager) *KeyboardShortcutTool {
+	return &KeyboardShortcutTool{
+		logger:     log,
+		browserMgr: browserMgr,
+	}
+}
+
+func (t *KeyboardShortcutTool) Name() string {
+	return "keyboard_shortcuts"
+}
+
+func (t *KeyboardShortcutTool) Description() string {
+	return "Send keyboard combinations and special keys like Ctrl+C/V, F5, Tab, Enter, etc."
+}
+
+func (t *KeyboardShortcutTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"keys": map[string]interface{}{
+				"type":        "string",
+				"description": "Key combination to send (e.g., 'Ctrl+C', 'F5', 'Tab', 'Enter', 'Alt+Tab')",
+			},
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Page ID to send keys to (optional, uses current page if not specified)",
+			},
+			"element_selector": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector for element to focus before sending keys (optional)",
+			},
+			"repeat": map[string]interface{}{
+				"type":        "integer",
+				"description": "Number of times to repeat the key combination (default: 1)",
+				"default":     1,
+				"minimum":     1,
+				"maximum":     10,
+			},
+			"delay": map[string]interface{}{
+				"type":        "integer",
+				"description": "Delay between key repeats in milliseconds (default: 100)",
+				"default":     100,
+				"minimum":     0,
+				"maximum":     5000,
+			},
+		},
+		Required: []string{"keys"},
+	}
+}
+
+func (t *KeyboardShortcutTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Milliseconds()
+		t.logger.LogToolExecution(t.Name(), args, true, duration)
+	}()
+
+	// Add timeout protection
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Parse arguments
+	keys, ok := args["keys"].(string)
+	if !ok {
+		return nil, fmt.Errorf("keys is required")
+	}
+
+	pageID, _ := args["page_id"].(string)
+	elementSelector, _ := args["element_selector"].(string)
+
+	repeat := 1
+	if val, ok := args["repeat"].(float64); ok {
+		repeat = int(val)
+	}
+
+	delay := 100
+	if val, ok := args["delay"].(float64); ok {
+		delay = int(val)
+	}
+
+	// Execute keyboard shortcut in goroutine with timeout
+	resultChan := make(chan *types.CallToolResponse, 1)
+	errorChan := make(chan error, 1)
+
+	go func() {
+		result, err := t.sendKeyboardShortcut(pageID, elementSelector, keys, repeat, delay)
+		if err != nil {
+			errorChan <- err
+			return
+		}
+		resultChan <- result
+	}()
+
+	// Wait for result or timeout
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("keyboard shortcut operation timed out after 30 seconds")
+	case err := <-errorChan:
+		return nil, err
+	case result := <-resultChan:
+		return result, nil
+	}
+}
+
+func (t *KeyboardShortcutTool) sendKeyboardShortcut(pageID, elementSelector, keys string, repeat, delay int) (*types.CallToolResponse, error) {
+	// Parse the key combination
+	keyConfig, err := t.parseKeyCombination(keys)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse key combination '%s': %w", keys, err)
+	}
+
+	// Build JavaScript for sending keyboard events
+	script := fmt.Sprintf(`
+		// Parse key configuration
+		const keyConfig = %s;
+		const elementSelector = '%s';
+		const repeat = %d;
+		const delay = %d;
+
+		// Focus on specific element if provided
+		let targetElement = document.activeElement;
+		if (elementSelector) {
+			const element = document.querySelector(elementSelector);
+			if (element) {
+				element.focus();
+				targetElement = element;
+			} else {
+				return { error: 'Element not found with selector: ' + elementSelector };
+			}
+		}
+
+		// Helper function to create and dispatch keyboard event
+		function dispatchKeyEvent(eventType, keyConfig, target) {
+			const event = new KeyboardEvent(eventType, {
+				key: keyConfig.key,
+				code: keyConfig.code,
+				keyCode: keyConfig.keyCode,
+				which: keyConfig.keyCode,
+				ctrlKey: keyConfig.ctrlKey,
+				altKey: keyConfig.altKey,
+				shiftKey: keyConfig.shiftKey,
+				metaKey: keyConfig.metaKey,
+				bubbles: true,
+				cancelable: true
+			});
+			
+			target.dispatchEvent(event);
+			return event;
+		}
+
+		// Send the key combination
+		const results = [];
+		for (let i = 0; i < repeat; i++) {
+			// Send keydown event
+			const keydownEvent = dispatchKeyEvent('keydown', keyConfig, targetElement);
+			
+			// Send keypress event (for printable characters)
+			if (keyConfig.isPrintable) {
+				dispatchKeyEvent('keypress', keyConfig, targetElement);
+			}
+			
+			// Send keyup event
+			const keyupEvent = dispatchKeyEvent('keyup', keyConfig, targetElement);
+			
+			results.push({
+				iteration: i + 1,
+				keydown_prevented: keydownEvent.defaultPrevented,
+				keyup_prevented: keyupEvent.defaultPrevented
+			});
+
+			// Add delay between repeats (except for last iteration)
+			if (i < repeat - 1 && delay > 0) {
+				await new Promise(resolve => setTimeout(resolve, delay));
+			}
+		}
+
+		return {
+			success: true,
+			keys_sent: '%s',
+			target_element: targetElement.tagName + (targetElement.id ? '#' + targetElement.id : '') + (targetElement.className ? '.' + targetElement.className.split(' ').join('.') : ''),
+			repeat_count: repeat,
+			results: results,
+			key_info: keyConfig
+		};
+	`,
+	keyConfig,
+	strings.ReplaceAll(elementSelector, "'", "\\'"),
+	repeat,
+	delay,
+	strings.ReplaceAll(keys, "'", "\\'"))
+
+	result, err := t.browserMgr.ExecuteScript(pageID, script)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send keyboard shortcut: %w", err)
+	}
+
+	// Parse the JavaScript result
+	var jsResult map[string]interface{}
+	resultStr, ok := result.(string)
+	if !ok {
+		return nil, fmt.Errorf("unexpected result type from JavaScript execution")
+	}
+	if err := json.Unmarshal([]byte(resultStr), &jsResult); err != nil {
+		return nil, fmt.Errorf("failed to parse keyboard shortcut result: %w", err)
+	}
+
+	// Check for errors
+	if errorMsg, exists := jsResult["error"]; exists {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Keyboard shortcut failed: %v", errorMsg),
+			}},
+		}, nil
+	}
+
+	// Format successful response
+	responseText := fmt.Sprintf("Successfully sent keyboard shortcut: %s", keys)
+	if targetElement, ok := jsResult["target_element"].(string); ok {
+		responseText += fmt.Sprintf("\nTarget: %s", targetElement)
+	}
+	if repeat > 1 {
+		responseText += fmt.Sprintf("\nRepeated: %d times", repeat)
+	}
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: responseText,
+			Data: jsResult,
+		}},
+	}, nil
+}
+
+func (t *KeyboardShortcutTool) parseKeyCombination(keys string) (string, error) {
+	// Common key mappings
+	keyMappings := map[string]map[string]interface{}{
+		// Navigation keys
+		"Tab":       {"key": "Tab", "code": "Tab", "keyCode": 9, "isPrintable": false},
+		"Shift+Tab": {"key": "Tab", "code": "Tab", "keyCode": 9, "shiftKey": true, "isPrintable": false},
+		"Enter":     {"key": "Enter", "code": "Enter", "keyCode": 13, "isPrintable": false},
+		"Escape":    {"key": "Escape", "code": "Escape", "keyCode": 27, "isPrintable": false},
+		"Backspace": {"key": "Backspace", "code": "Backspace", "keyCode": 8, "isPrintable": false},
+		"Delete":    {"key": "Delete", "code": "Delete", "keyCode": 46, "isPrintable": false},
+
+		// Arrow keys
+		"ArrowUp":    {"key": "ArrowUp", "code": "ArrowUp", "keyCode": 38, "isPrintable": false},
+		"ArrowDown":  {"key": "ArrowDown", "code": "ArrowDown", "keyCode": 40, "isPrintable": false},
+		"ArrowLeft":  {"key": "ArrowLeft", "code": "ArrowLeft", "keyCode": 37, "isPrintable": false},
+		"ArrowRight": {"key": "ArrowRight", "code": "ArrowRight", "keyCode": 39, "isPrintable": false},
+
+		// Page navigation
+		"PageUp":   {"key": "PageUp", "code": "PageUp", "keyCode": 33, "isPrintable": false},
+		"PageDown": {"key": "PageDown", "code": "PageDown", "keyCode": 34, "isPrintable": false},
+		"Home":     {"key": "Home", "code": "Home", "keyCode": 36, "isPrintable": false},
+		"End":      {"key": "End", "code": "End", "keyCode": 35, "isPrintable": false},
+
+		// Function keys
+		"F1":  {"key": "F1", "code": "F1", "keyCode": 112, "isPrintable": false},
+		"F2":  {"key": "F2", "code": "F2", "keyCode": 113, "isPrintable": false},
+		"F3":  {"key": "F3", "code": "F3", "keyCode": 114, "isPrintable": false},
+		"F4":  {"key": "F4", "code": "F4", "keyCode": 115, "isPrintable": false},
+		"F5":  {"key": "F5", "code": "F5", "keyCode": 116, "isPrintable": false},
+		"F6":  {"key": "F6", "code": "F6", "keyCode": 117, "isPrintable": false},
+		"F7":  {"key": "F7", "code": "F7", "keyCode": 118, "isPrintable": false},
+		"F8":  {"key": "F8", "code": "F8", "keyCode": 119, "isPrintable": false},
+		"F9":  {"key": "F9", "code": "F9", "keyCode": 120, "isPrintable": false},
+		"F10": {"key": "F10", "code": "F10", "keyCode": 121, "isPrintable": false},
+		"F11": {"key": "F11", "code": "F11", "keyCode": 122, "isPrintable": false},
+		"F12": {"key": "F12", "code": "F12", "keyCode": 123, "isPrintable": false},
+
+		// Common shortcuts with Ctrl
+		"Ctrl+A": {"key": "a", "code": "KeyA", "keyCode": 65, "ctrlKey": true, "isPrintable": false},
+		"Ctrl+C": {"key": "c", "code": "KeyC", "keyCode": 67, "ctrlKey": true, "isPrintable": false},
+		"Ctrl+V": {"key": "v", "code": "KeyV", "keyCode": 86, "ctrlKey": true, "isPrintable": false},
+		"Ctrl+X": {"key": "x", "code": "KeyX", "keyCode": 88, "ctrlKey": true, "isPrintable": false},
+		"Ctrl+Z": {"key": "z", "code": "KeyZ", "keyCode": 90, "ctrlKey": true, "isPrintable": false},
+		"Ctrl+Y": {"key": "y", "code": "KeyY", "keyCode": 89, "ctrlKey": true, "isPrintable": false},
+		"Ctrl+S": {"key": "s", "code": "KeyS", "keyCode": 83, "ctrlKey": true, "isPrintable": false},
+		"Ctrl+O": {"key": "o", "code": "KeyO", "keyCode": 79, "ctrlKey": true, "isPrintable": false},
+		"Ctrl+N": {"key": "n", "code": "KeyN", "keyCode": 78, "ctrlKey": true, "isPrintable": false},
+		"Ctrl+W": {"key": "w", "code": "KeyW", "keyCode": 87, "ctrlKey": true, "isPrintable": false},
+		"Ctrl+F": {"key": "f", "code": "KeyF", "keyCode": 70, "ctrlKey": true, "isPrintable": false},
+		"Ctrl+R": {"key": "r", "code": "KeyR", "keyCode": 82, "ctrlKey": true, "isPrintable": false},
+
+		// Common shortcuts with Alt
+		"Alt+Tab":  {"key": "Tab", "code": "Tab", "keyCode": 9, "altKey": true, "isPrintable": false},
+		"Alt+F4":   {"key": "F4", "code": "F4", "keyCode": 115, "altKey": true, "isPrintable": false},
+		"Alt+Left": {"key": "ArrowLeft", "code": "ArrowLeft", "keyCode": 37, "altKey": true, "isPrintable": false},
+		"Alt+Right": {"key": "ArrowRight", "code": "ArrowRight", "keyCode": 39, "altKey": true, "isPrintable": false},
+
+		// Common shortcuts with Shift
+		"Shift+F10": {"key": "F10", "code": "F10", "keyCode": 121, "shiftKey": true, "isPrintable": false},
+
+		// Space
+		"Space": {"key": " ", "code": "Space", "keyCode": 32, "isPrintable": true},
+	}
+
+	// Check if the key combination exists in our mappings
+	if keyData, exists := keyMappings[keys]; exists {
+		// Convert to JSON string for JavaScript
+		jsonBytes, err := json.Marshal(keyData)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal key data: %w", err)
+		}
+		return string(jsonBytes), nil
+	}
+
+	return "", fmt.Errorf("unsupported key combination: %s. Supported keys include: Tab, Enter, F5, Ctrl+C, Ctrl+V, Alt+Tab, etc.", keys)
+}
+
 // ExecuteScriptTool executes JavaScript
 type ExecuteScriptTool struct {
 	logger  *logger.Logger

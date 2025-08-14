@@ -125,6 +125,26 @@ Examples:
   • "Document test results visually"
 		
 Perfect for: Visual testing, documentation, debugging`,
+
+		"take_element_screenshot": `📸 Capture screenshots of specific elements (🔥 NEW)
+		
+Purpose: Focused visual testing and element documentation
+Examples:
+  • "Screenshot just the navigation menu for testing"
+  • "Capture error message element for bug reporting"
+  • "Document specific form field validation states"
+		
+Perfect for: Element testing, UI debugging, component documentation`,
+
+		"keyboard_shortcuts": `⌨️ Send keyboard combinations and special keys
+		
+Purpose: Form navigation, keyboard shortcuts, copy/paste operations
+Examples:
+  • "Navigate form fields with Tab/Shift+Tab"
+  • "Copy text with Ctrl+C and paste with Ctrl+V"
+  • "Refresh page with F5 or trigger DevTools with F12"
+		
+Perfect for: Keyboard automation, form navigation, shortcut testing`,
 	}
 	
 	if desc, exists := descriptions[toolName]; exists {
@@ -162,6 +182,42 @@ func GetToolExamples(toolName string) []ToolExample {
 });`,
 				},
 				Expected: "Validates all forms and logs results to console",
+			},
+		},
+		
+		"take_element_screenshot": {
+			{
+				Name: "Button Screenshot",
+				Description: "Capture a specific button for testing documentation",
+				Parameters: map[string]interface{}{
+					"selector": "#submit-button",
+					"filename": "submit-button.png",
+					"padding": 15,
+					"scroll_into_view": true,
+				},
+				Expected: "Saves screenshot of submit button with 15px padding",
+			},
+			{
+				Name: "Error Message Capture",
+				Description: "Screenshot validation error for bug reporting",
+				Parameters: map[string]interface{}{
+					"selector": ".error-message",
+					"wait_for_element": true,
+					"timeout": 5,
+					"padding": 20,
+				},
+				Expected: "Captures error message element after waiting for visibility",
+			},
+			{
+				Name: "Form Field Documentation",
+				Description: "Document form field state for testing",
+				Parameters: map[string]interface{}{
+					"selector": "#email-field",
+					"filename": "email-field-state.png",
+					"scroll_into_view": false,
+					"padding": 5,
+				},
+				Expected: "Screenshots email field without scrolling for documentation",
 			},
 		},
 		
@@ -299,6 +355,44 @@ func GetToolExamples(toolName string) []ToolExample {
 					"header_row": 1,
 				},
 				Expected: "Returns array of arrays with cell values for custom processing",
+			},
+		},
+		
+		"keyboard_shortcuts": {
+			{
+				Name: "Form Navigation",
+				Description: "Navigate through form fields using Tab key",
+				Parameters: map[string]interface{}{
+					"keys": "Tab",
+					"selector": "#contact-form",
+				},
+				Expected: "Moves focus to next form field within the contact form",
+			},
+			{
+				Name: "Copy and Paste Text",
+				Description: "Select all text and copy it to clipboard",
+				Parameters: map[string]interface{}{
+					"keys": "Ctrl+A",
+					"selector": "textarea#message",
+				},
+				Expected: "Selects all text in the message textarea",
+			},
+			{
+				Name: "Browser Refresh",
+				Description: "Refresh the current page using F5 key",
+				Parameters: map[string]interface{}{
+					"keys": "F5",
+				},
+				Expected: "Refreshes the current page",
+			},
+			{
+				Name: "Form Submission",
+				Description: "Submit form using Enter key",
+				Parameters: map[string]interface{}{
+					"keys": "Enter",
+					"selector": "#submit-button",
+				},
+				Expected: "Submits the form by pressing Enter on submit button",
 			},
 		},
 	}

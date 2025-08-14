@@ -170,6 +170,37 @@ func (h *HelpSystem) initializeHints() {
 		WorksWith: []string{"navigate_page", "wait_for_condition", "screen_scrape", "http_request"},
 	}
 
+	h.hints["take_element_screenshot"] = UsageHint{
+		Tool:        "take_element_screenshot",
+		Category:    BrowserAutomation,
+		Description: "Capture screenshots of specific elements with smart positioning, padding control, and visibility waiting. Perfect for focused testing, bug reporting, and component documentation.",
+		Example:     "Screenshot error messages for bug reports, capture navigation menus for testing, or document form field states for validation workflows",
+		CommonUse: []string{
+			"Document UI components and element states",
+			"Capture error messages and validation states",
+			"Test element positioning and styling",
+			"Generate visual evidence for bug reports",
+			"Create focused screenshots for documentation",
+		},
+		WorksWith: []string{"navigate_page", "wait_for_element", "assert_element", "click_element"},
+	}
+
+	h.hints["keyboard_shortcuts"] = UsageHint{
+		Tool:        "keyboard_shortcuts",
+		Category:    UIControl,
+		Description: "Send keyboard combinations and special keys (Ctrl+C/V, F5, Tab, Enter, arrow keys, function keys). Essential for form navigation, shortcuts, copy/paste operations, and testing keyboard interactions.",
+		Example:     "Navigate form fields with Tab, trigger browser refresh with F5, copy/paste text with Ctrl+C/V, or test keyboard shortcuts in web applications",
+		CommonUse: []string{
+			"Navigate forms with Tab/Shift+Tab key combinations",
+			"Copy/paste operations with Ctrl+C, Ctrl+V, Ctrl+A",
+			"Trigger browser functions with F5 refresh, F12 DevTools",
+			"Submit forms using Enter key",
+			"Test application keyboard shortcuts and hotkeys",
+			"Navigate menus and dropdowns with arrow keys",
+		},
+		WorksWith: []string{"type_text", "click_element", "wait_for_element", "form_fill"},
+	}
+
 	// Add more hints for other tools...
 }
 
@@ -217,7 +248,8 @@ func (h *HelpSystem) GetWorkflowSuggestion(goals []string) string {
 		"2. Use `wait_for_condition` to wait for component state changes",
 		"3. Use `form_fill` for user registration/login flows",
 		"4. Use `assert_element` to verify UI state and content",
-		"5. Use `screen_scrape` to extract and validate data",
+		"5. Use `take_element_screenshot` to document component states",
+		"6. Use `screen_scrape` to extract and validate data",
 		"",
 		"📊 **Table Data Extraction Workflow (🔥 NEW):**",
 		"1. Use `navigate_page` to load page with data tables",
@@ -225,6 +257,13 @@ func (h *HelpSystem) GetWorkflowSuggestion(goals []string) string {
 		"3. Use `extract_table` to convert HTML tables to structured data",
 		"4. Use `assert_element` to verify extraction success",
 		"5. Use `write_file` to save extracted data for analysis",
+		"",
+		"📸 **Visual Testing & Bug Reporting (🔥 NEW):**",
+		"1. Use `navigate_page` to load the problematic page",
+		"2. Use `click_element` or `form_fill` to reproduce the issue",
+		"3. Use `take_element_screenshot` to capture error states",
+		"4. Use `assert_element` to verify expected vs actual behavior",
+		"5. Use `take_screenshot` for full page context documentation",
 		"",
 		"🚀 **API Testing Workflow:**", 
 		"1. Use `http_request` to test your API endpoints",
