@@ -12,6 +12,7 @@ import (
 	"rodmcp/internal/logger"
 	"rodmcp/internal/mcp"
 	"rodmcp/internal/webtools"
+	debugpkg "runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -136,6 +137,23 @@ func loadFileAccessConfig(configFile, allowedPaths, denyPaths string, allowTemp,
 }
 
 func main() {
+	// Global panic recovery - log panic and exit gracefully
+	defer func() {
+		if r := recover(); r != nil {
+			stackTrace := debugpkg.Stack()
+			fmt.Fprintf(os.Stderr, "FATAL: RodMCP panicked: %v\n", r)
+			fmt.Fprintf(os.Stderr, "Stack trace:\n%s\n", stackTrace)
+			fmt.Fprintf(os.Stderr, "This error has been logged. Check logs/ directory for details.\n")
+			
+			// Try to write panic info to a crash log file
+			if crashFile, err := os.OpenFile("rodmcp-crash.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+				defer crashFile.Close()
+				crashFile.WriteString(fmt.Sprintf("PANIC at %s: %v\nStack:\n%s\n\n", time.Now().Format(time.RFC3339), r, stackTrace))
+			}
+			
+			os.Exit(1)
+		}
+	}()
 	// Check for subcommands first
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -306,6 +324,13 @@ func main() {
 	// Start MCP server in a goroutine
 	errChan := make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				stackTrace := debugpkg.Stack()
+				log.Error("MCP server panic", zap.Any("panic", r), zap.String("stack", string(stackTrace)))
+				errChan <- fmt.Errorf("MCP server panicked: %v", r)
+			}
+		}()
 		if err := mcpServer.Start(); err != nil {
 			errChan <- err
 		}
@@ -488,6 +513,13 @@ func startHTTPServer() {
 	// Start HTTP server in a goroutine
 	errChan := make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				stackTrace := debugpkg.Stack()
+				log.Error("HTTP server panic", zap.Any("panic", r), zap.String("stack", string(stackTrace)))
+				errChan <- fmt.Errorf("HTTP server panicked: %v", r)
+			}
+		}()
 		if err := httpServer.Start(); err != nil && err != http.ErrServerClosed {
 			errChan <- err
 		}

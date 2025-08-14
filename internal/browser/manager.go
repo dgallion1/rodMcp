@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"rodmcp/internal/logger"
+	debugpkg "runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -91,6 +92,13 @@ func (m *Manager) Start(config Config) error {
 	errChan := make(chan error, 1)
 	
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				stackTrace := debugpkg.Stack()
+				m.logger.Error("Browser launch panic", zap.Any("panic", r), zap.String("stack", string(stackTrace)))
+				errChan <- fmt.Errorf("browser launch panicked: %v", r)
+			}
+		}()
 		url, err := l.Launch()
 		if err != nil {
 			errChan <- err
@@ -134,6 +142,13 @@ func (m *Manager) Start(config Config) error {
 			errChan2 := make(chan error, 1)
 			
 			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						stackTrace := debugpkg.Stack()
+						m.logger.Error("Fallback browser launch panic", zap.Any("panic", r), zap.String("stack", string(stackTrace)))
+						errChan2 <- fmt.Errorf("fallback browser launch panicked: %v", r)
+					}
+				}()
 				url, err := l.Launch()
 				if err != nil {
 					errChan2 <- err
