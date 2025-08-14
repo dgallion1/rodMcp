@@ -18,6 +18,11 @@ cmd/*/main
 !examples/*.html
 coverage.out
 
+# Test coverage reports
+coverage.out
+*_coverage.out
+*.coverprofile
+
 # Logs
 *.log
 *_logs/
