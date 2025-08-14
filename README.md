@@ -7,14 +7,14 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 - 🤖 **Works with Claude** - Full MCP protocol support for seamless integration
 - 🔄 **Robust Connection Management** - Automatic reconnection and health monitoring prevents timeout errors
 - 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless (browser visibility fixed!)
-- 🛠️ **23 Comprehensive Tools** - Complete browser control + screen scraping + table extraction + file system + HTTP requests + interactive help
+- 🛠️ **26 Comprehensive Tools** - Complete browser control + screen scraping + table extraction + file system + HTTP requests + interactive help
 - 🏠 **Easy Install** - No sudo required with local user installation
 - 🚀 **Auto Go Install** - Makefile can install Go locally if not present
 - ⚡ **Go 1.24.5+ Performance** - Fast, reliable browser automation
 
 ## 🛠️ Available Tools
 
-Once installed, Claude gains access to these 23 comprehensive web development tools:
+Once installed, Claude gains access to these 26 comprehensive web development tools:
 
 ### 🌐 Browser Automation Tools
 
@@ -32,6 +32,16 @@ Open URLs or local files in the browser
 Capture visual snapshots of web pages
 - **Purpose**: Visual validation and documentation
 - **Example**: "Take a screenshot of the page after applying dark mode"
+
+### 📸 `take_element_screenshot` 🔥 NEW
+Capture screenshots of specific elements with smart positioning
+- **Purpose**: Focused visual testing and element documentation
+- **Features**: Element visibility waiting, configurable padding, auto-scrolling
+- **Use Cases**: Bug reports, UI component testing, validation states
+- **Examples**: 
+  - "Screenshot the error message for the bug report"
+  - "Capture just the navigation menu to test responsive design"
+  - "Document form field validation states"
 
 ### ⚡ `execute_script`
 Run JavaScript code in browser pages
@@ -89,6 +99,26 @@ Scroll the page by pixels or to specific elements
 Hover over elements to trigger hover effects
 - **Purpose**: Reveal dropdown menus or hover-triggered content
 - **Example**: "Hover over the navigation menu"
+
+### ⌨️ `keyboard_shortcuts`
+Send keyboard combinations and special keys (Ctrl+C/V, F5, Tab, Enter, etc.)
+- **Purpose**: Form navigation, keyboard shortcuts, copy/paste operations
+- **Features**: 40+ key combinations, element targeting, repeat functionality
+- **Use Cases**: Tab navigation, browser shortcuts, form submission, keyboard automation
+- **Examples**: 
+  - "Navigate form fields with Tab key"
+  - "Copy text with Ctrl+C and refresh page with F5"
+  - "Submit form using Enter key"
+
+### 🔄 `switch_tab`
+Switch between browser tabs for multi-tab workflow automation
+- **Purpose**: Create, manage, and navigate between multiple browser tabs
+- **Features**: Create new tabs, directional switching, close tabs, list all tabs
+- **Use Cases**: Multi-site comparison, complex workflows, tab organization
+- **Examples**:
+  - "Open comparison sites in different tabs and switch between them"
+  - "Create new tab for testing, then close when done"
+  - "List all open tabs and switch to the first one"
 
 ### 🕷️ Screen Scraping Tools
 
@@ -335,7 +365,7 @@ While Playwright is excellent for traditional automation, RodMCP is **specifical
 - **MIT License** - Clean licensing across all dependencies
 - **Go Security** - Memory-safe language with excellent security track record
 - **No External APIs** - Runs completely locally with stdio transport
-- **Comprehensive Testing** - 25+ automated tests with 100% success rate
+- **Comprehensive Testing** - 26+ automated tests with 100% success rate
 
 ### ⚡ **Technical Advantages**
 | Feature | RodMCP | Playwright MCP |
@@ -793,7 +823,7 @@ This fix resolves Chrome's `--no-startup-window` flag that was preventing the br
 - **[Local Install Guide](LOCAL_INSTALL.md)** - Install without sudo (recommended)
 - **[Browser Visibility](BROWSER_VISIBILITY.md)** - Control browser display modes
 - **[MCP Usage Examples](MCP_USAGE.md)** - How to use with Claude effectively
-- **[API Reference](API_REFERENCE.md)** - Complete technical documentation for all 23 tools
+- **[API Reference](API_REFERENCE.md)** - Complete technical documentation for all 26 tools
 
 ## 📋 System Requirements
 

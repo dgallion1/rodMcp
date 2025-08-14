@@ -1,6 +1,6 @@
 # RodMCP API Reference
 
-Complete reference documentation for all 25 RodMCP tools, organized by category with detailed parameters, examples, and usage patterns.
+Complete reference documentation for all 26 RodMCP tools, organized by category with detailed parameters, examples, and usage patterns.
 
 ## 🌐 Browser Automation Tools
 
@@ -326,6 +326,66 @@ or
 - **Function Keys:** F1-F12 (F5, F11, F12 commonly used)
 - **Special Keys:** Space, Home, End, PageUp, PageDown
 
+### switch_tab
+**Purpose:** Switch between browser tabs for multi-tab workflow automation.
+
+**Parameters:**
+- `action` (optional): Tab action - 'create', 'switch', 'close', 'list', 'close_all' (default: 'switch')
+- `target` (optional): Target for action - page_id for switch/close, URL for create, or 'current' for current tab
+- `url` (optional): URL to load when creating a new tab
+- `switch_to` (optional): Switch method - 'next', 'previous', 'first', 'last', or page_id
+- `timeout` (optional): Timeout in seconds for tab operations (default: 10)
+
+**Returns:** Tab operation result with page information
+
+**Examples:**
+
+**Create New Tab:**
+```json
+{
+  "action": "create",
+  "url": "https://example.com"
+}
+```
+
+**Switch to Next Tab:**
+```json
+{
+  "action": "switch",
+  "switch_to": "next"
+}
+```
+
+**Switch to Specific Tab:**
+```json
+{
+  "action": "switch",
+  "target": "page_12345"
+}
+```
+
+**List All Tabs:**
+```json
+{
+  "action": "list"
+}
+```
+
+**Close Current Tab:**
+```json
+{
+  "action": "close",
+  "target": "current"
+}
+```
+
+**Close All Tabs (except current):**
+```json
+{
+  "action": "close_all"
+}
+```
+
 ## 📁 File System Tools
 
 ### read_file
@@ -538,7 +598,7 @@ When errors occur, tools return:
 ### Browser Automation (7 tools)
 Focus on page creation, navigation, and core browser operations.
 
-### UI Control (9 tools)  
+### UI Control (10 tools)  
 Handle user interactions, element manipulation, and page state.
 
 ### File System (3 tools)
@@ -592,4 +652,4 @@ Provide guidance and tool discovery.
 
 RodMCP implements the Model Context Protocol (MCP) specification and communicates via JSON-RPC 2.0. All tools are automatically discovered by MCP clients like Claude Desktop and Claude CLI.
 
-For development and testing, the comprehensive test suite validates all 25 tools across realistic usage scenarios.
+For development and testing, the comprehensive test suite validates all 26 tools across realistic usage scenarios.

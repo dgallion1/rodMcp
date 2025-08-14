@@ -125,6 +125,7 @@ func main() {
 	mcpServer.RegisterTool(webtools.NewClickElementTool(log, browserMgr))
 	mcpServer.RegisterTool(webtools.NewTypeTextTool(log, browserMgr))
 	mcpServer.RegisterTool(webtools.NewKeyboardShortcutTool(log, browserMgr))
+	mcpServer.RegisterTool(webtools.NewSwitchTabTool(log, browserMgr))
 	mcpServer.RegisterTool(webtools.NewWaitTool(log))
 	mcpServer.RegisterTool(webtools.NewWaitForElementTool(log, browserMgr))
 	mcpServer.RegisterTool(webtools.NewGetElementTextTool(log, browserMgr))
@@ -173,7 +174,7 @@ func main() {
 	// Send a log message to MCP client
 	mcpServer.SendLogMessage("info", "RodMCP server is ready for connections", map[string]interface{}{
 		"timestamp":        time.Now().UTC().Format(time.RFC3339),
-		"tools_registered": 25,
+		"tools_registered": 26,
 		"browser_config": map[string]interface{}{
 			"headless":      *headless,
 			"debug":         *debug,
@@ -268,6 +269,7 @@ func startHTTPServer() {
 	httpServer.RegisterTool(webtools.NewClickElementTool(log, browserMgr))
 	httpServer.RegisterTool(webtools.NewTypeTextTool(log, browserMgr))
 	httpServer.RegisterTool(webtools.NewKeyboardShortcutTool(log, browserMgr))
+	httpServer.RegisterTool(webtools.NewSwitchTabTool(log, browserMgr))
 	httpServer.RegisterTool(webtools.NewWaitTool(log))
 	httpServer.RegisterTool(webtools.NewWaitForElementTool(log, browserMgr))
 	httpServer.RegisterTool(webtools.NewGetElementTextTool(log, browserMgr))
@@ -318,7 +320,7 @@ func startHTTPServer() {
 	httpServer.SendLogMessage("info", "RodMCP HTTP server is ready for connections", map[string]interface{}{
 		"timestamp":        time.Now().UTC().Format(time.RFC3339),
 		"port":            *port,
-		"tools_registered": 25,
+		"tools_registered": 26,
 		"browser_config": map[string]interface{}{
 			"headless":      *headless,
 			"debug":         *debug,
@@ -386,6 +388,7 @@ func getAllTools() map[string]mcp.Tool {
 	tools["click_element"] = webtools.NewClickElementTool(log, browserMgr)
 	tools["type_text"] = webtools.NewTypeTextTool(log, browserMgr)
 	tools["keyboard_shortcuts"] = webtools.NewKeyboardShortcutTool(log, browserMgr)
+	tools["switch_tab"] = webtools.NewSwitchTabTool(log, browserMgr)
 	tools["wait"] = webtools.NewWaitTool(log)
 	tools["wait_for_element"] = webtools.NewWaitForElementTool(log, browserMgr)
 	tools["get_element_text"] = webtools.NewGetElementTextTool(log, browserMgr)
@@ -486,7 +489,7 @@ For more information, see: https://github.com/your-org/rodmcp
 func listTools() {
 	fmt.Println("🛠️  RodMCP Available Tools")
 	fmt.Println("=" + strings.Repeat("=", 50))
-	fmt.Printf("Total: 25 comprehensive web development tools\n\n")
+	fmt.Printf("Total: 26 comprehensive web development tools\n\n")
 	
 	tools := getAllTools()
 	
@@ -497,7 +500,7 @@ func listTools() {
 			"execute_script", "set_browser_visibility", "live_preview",
 		},
 		"🎯 Browser UI Control": {
-			"click_element", "type_text", "keyboard_shortcuts", "wait", "wait_for_element",
+			"click_element", "type_text", "keyboard_shortcuts", "switch_tab", "wait", "wait_for_element",
 			"get_element_text", "get_element_attribute", "scroll", "hover_element",
 		},
 		"🕷️ Screen Scraping": {

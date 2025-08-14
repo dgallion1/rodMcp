@@ -201,6 +201,22 @@ func (h *HelpSystem) initializeHints() {
 		WorksWith: []string{"type_text", "click_element", "wait_for_element", "form_fill"},
 	}
 
+	h.hints["switch_tab"] = UsageHint{
+		Tool:        "switch_tab",
+		Category:    UIControl,
+		Description: "Switch between browser tabs for multi-tab workflow automation. Create new tabs, switch between existing tabs, close tabs, and manage multi-tab workflows efficiently.",
+		Example:     "Open multiple sites in different tabs, switch between them for comparison, or manage complex workflows across multiple pages simultaneously",
+		CommonUse: []string{
+			"Create new tabs and navigate to different URLs",
+			"Switch between tabs using directional navigation (next, previous, first, last)",
+			"Close specific tabs or all tabs except current",
+			"List all open tabs with titles and URLs",
+			"Manage multi-tab testing workflows and comparisons",
+			"Automate workflows requiring multiple open pages",
+		},
+		WorksWith: []string{"navigate_page", "create_page", "take_screenshot", "screen_scrape"},
+	}
+
 	// Add more hints for other tools...
 }
 

@@ -649,3 +649,77 @@ func (m *Manager) EnsureHealthy() error {
 
 	return nil
 }
+
+// PageInfo represents information about a browser page/tab
+type PageInfo struct {
+	PageID string `json:"page_id"`
+	Title  string `json:"title"`
+	URL    string `json:"url"`
+}
+
+// GetAllPages returns information about all open pages/tabs
+func (m *Manager) GetAllPages() []PageInfo {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	var pages []PageInfo
+	for pageID, page := range m.pages {
+		title := ""
+		url := ""
+		
+		// Try to get page info, but don't fail if it's not available
+		if info, err := page.Info(); err == nil {
+			title = info.Title
+			url = info.URL
+		}
+		
+		// Fallback to basic URL if available
+		if url == "" {
+			if pageURL := page.MustInfo().URL; pageURL != "" {
+				url = pageURL
+			}
+		}
+		
+		pages = append(pages, PageInfo{
+			PageID: pageID,
+			Title:  title,
+			URL:    url,
+		})
+	}
+
+	return pages
+}
+
+// GetCurrentPageID returns the ID of the currently active page
+func (m *Manager) GetCurrentPageID() string {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	// For now, return the first page ID as current
+	// This is a simplification - in a real implementation we'd track the active page
+	for pageID := range m.pages {
+		return pageID
+	}
+
+	return ""
+}
+
+// SwitchToPage switches to the specified page/tab
+func (m *Manager) SwitchToPage(pageID string) error {
+	m.mutex.RLock()
+	page, exists := m.pages[pageID]
+	m.mutex.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("page %s not found", pageID)
+	}
+
+	// Activate the page (bring it to front)
+	_, err := page.Activate()
+	if err != nil {
+		return fmt.Errorf("failed to activate page %s: %w", pageID, err)
+	}
+
+	m.logger.LogBrowserAction("page_switched", pageID, 0)
+	return nil
+}

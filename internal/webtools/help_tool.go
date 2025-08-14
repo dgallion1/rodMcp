@@ -92,7 +92,7 @@ func (t *HelpTool) Execute(args map[string]interface{}) (*types.CallToolResponse
 func (t *HelpTool) getOverview() string {
 	return `# 🛠️ RodMCP Tools Overview
 
-RodMCP provides 25 comprehensive web development tools organized into 7 categories:
+RodMCP provides 26 comprehensive web development tools organized into 7 categories:
 
 ## 🌐 Browser Automation (7 tools)
 • **create_page** - Generate HTML pages with CSS/JavaScript  
@@ -103,10 +103,11 @@ RodMCP provides 25 comprehensive web development tools organized into 7 categori
 • **live_preview** - Start local development server
 • **set_browser_visibility** - Switch visible/headless modes
 
-## 🎯 UI Control (9 tools)  
+## 🎯 UI Control (10 tools)  
 • **click_element** - Click buttons and links
 • **type_text** - Fill forms and input fields
 • **keyboard_shortcuts** - Send key combinations (Ctrl+C/V, F5, Tab, arrows)
+• **switch_tab** - Multi-tab workflow automation (create, switch, close tabs)
 • **wait** / **wait_for_element** - Handle timing and loading
 • **get_element_text** / **get_element_attribute** - Extract page data
 • **scroll** - Navigate long pages

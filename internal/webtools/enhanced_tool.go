@@ -145,6 +145,16 @@ Examples:
   • "Refresh page with F5 or trigger DevTools with F12"
 		
 Perfect for: Keyboard automation, form navigation, shortcut testing`,
+
+		"switch_tab": `🔄 Multi-tab workflow automation
+		
+Purpose: Create, switch between, and manage multiple browser tabs efficiently
+Examples:
+  • "Open comparison sites in multiple tabs and switch between them"
+  • "Create new tabs for different test scenarios"
+  • "Manage complex workflows across multiple pages"
+		
+Perfect for: Multi-tab testing, workflow automation, tab management`,
 	}
 	
 	if desc, exists := descriptions[toolName]; exists {
@@ -393,6 +403,52 @@ func GetToolExamples(toolName string) []ToolExample {
 					"selector": "#submit-button",
 				},
 				Expected: "Submits the form by pressing Enter on submit button",
+			},
+		},
+		
+		"switch_tab": {
+			{
+				Name: "Create New Tab",
+				Description: "Open a new tab and navigate to a specific URL",
+				Parameters: map[string]interface{}{
+					"action": "create",
+					"url": "https://example.com",
+				},
+				Expected: "Creates new tab, navigates to example.com, and switches to it",
+			},
+			{
+				Name: "Switch to Next Tab",
+				Description: "Switch to the next tab in sequence",
+				Parameters: map[string]interface{}{
+					"action": "switch",
+					"switch_to": "next",
+				},
+				Expected: "Switches focus to the next available browser tab",
+			},
+			{
+				Name: "List All Open Tabs",
+				Description: "Get information about all currently open tabs",
+				Parameters: map[string]interface{}{
+					"action": "list",
+				},
+				Expected: "Returns list of all tabs with titles, URLs, and page IDs",
+			},
+			{
+				Name: "Close Current Tab",
+				Description: "Close the currently active tab",
+				Parameters: map[string]interface{}{
+					"action": "close",
+					"target": "current",
+				},
+				Expected: "Closes current tab and switches to another available tab",
+			},
+			{
+				Name: "Close All Tabs Except Current",
+				Description: "Close all tabs while keeping the current tab open",
+				Parameters: map[string]interface{}{
+					"action": "close_all",
+				},
+				Expected: "Closes all tabs except the currently active one",
 			},
 		},
 	}

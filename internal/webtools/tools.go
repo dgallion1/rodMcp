@@ -4941,3 +4941,499 @@ func (t *ExtractTableTool) extractTableData(pageID, selector string, includeHead
 		}},
 	}, nil
 }
+
+// SwitchTabTool switches between browser tabs for multi-tab workflows
+type SwitchTabTool struct {
+	logger     *logger.Logger
+	browserMgr *browser.Manager
+}
+
+func NewSwitchTabTool(log *logger.Logger, browserMgr *browser.Manager) *SwitchTabTool {
+	return &SwitchTabTool{
+		logger:     log,
+		browserMgr: browserMgr,
+	}
+}
+
+func (t *SwitchTabTool) Name() string {
+	return "switch_tab"
+}
+
+func (t *SwitchTabTool) Description() string {
+	return "Switch between browser tabs for multi-tab workflow automation"
+}
+
+func (t *SwitchTabTool) InputSchema() types.ToolSchema {
+	return types.ToolSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"action": map[string]interface{}{
+				"type":        "string",
+				"description": "Tab action: 'create', 'switch', 'close', 'list', 'close_all'",
+				"enum":        []string{"create", "switch", "close", "list", "close_all"},
+				"default":     "switch",
+			},
+			"target": map[string]interface{}{
+				"type":        "string",
+				"description": "Target for action: page_id for switch/close, URL for create, or 'current' for current tab",
+			},
+			"url": map[string]interface{}{
+				"type":        "string",
+				"description": "URL to load when creating a new tab",
+			},
+			"switch_to": map[string]interface{}{
+				"type":        "string",
+				"description": "Switch method: 'next', 'previous', 'first', 'last', or page_id",
+				"enum":        []string{"next", "previous", "first", "last"},
+			},
+			"timeout": map[string]interface{}{
+				"type":        "integer",
+				"description": "Timeout in seconds for tab operations (default: 10)",
+				"default":     10,
+				"minimum":     1,
+				"maximum":     60,
+			},
+		},
+	}
+}
+
+func (t *SwitchTabTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start).Milliseconds()
+		t.logger.LogToolExecution(t.Name(), args, true, duration)
+	}()
+
+	action := "switch"
+	if val, ok := args["action"].(string); ok {
+		action = val
+	}
+
+	timeout := 10
+	if val, ok := args["timeout"].(float64); ok {
+		timeout = int(val)
+	}
+
+	switch action {
+	case "create":
+		return t.createTab(args, timeout)
+	case "switch":
+		return t.switchTab(args, timeout)
+	case "close":
+		return t.closeTab(args, timeout)
+	case "list":
+		return t.listTabs(timeout)
+	case "close_all":
+		return t.closeAllTabs(timeout)
+	default:
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Unknown action: %s. Use 'create', 'switch', 'close', 'list', or 'close_all'", action),
+			}},
+			IsError: true,
+		}, nil
+	}
+}
+
+func (t *SwitchTabTool) createTab(args map[string]interface{}, timeout int) (*types.CallToolResponse, error) {
+	url, hasURL := args["url"].(string)
+	if !hasURL || url == "" {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: "URL is required when creating a new tab",
+			}},
+			IsError: true,
+		}, nil
+	}
+
+	// Create new page (tab)
+	page, pageID, err := t.browserMgr.NewPage(url)
+	if err != nil {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Failed to create new tab: %v", err),
+			}},
+			IsError: true,
+		}, nil
+	}
+
+	// Wait for page to load with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	loadScript := `
+		new Promise((resolve) => {
+			if (document.readyState === 'complete') {
+				resolve({
+					ready: true,
+					title: document.title,
+					url: window.location.href
+				});
+			} else {
+				window.addEventListener('load', () => {
+					resolve({
+						ready: true,
+						title: document.title,
+						url: window.location.href
+					});
+				});
+			}
+		});
+	`
+
+	done := make(chan bool, 1)
+	var pageInfo map[string]interface{}
+
+	go func() {
+		if data, err := t.browserMgr.ExecuteScript(pageID, loadScript); err == nil {
+			if info, ok := data.(map[string]interface{}); ok {
+				pageInfo = info
+			}
+		}
+		done <- true
+	}()
+
+	select {
+	case <-done:
+		// Success
+	case <-ctx.Done():
+		t.logger.Info("Tab creation timed out, but tab was created")
+	}
+
+	title := "New Tab"
+	if pageInfo != nil {
+		if t, ok := pageInfo["title"].(string); ok && t != "" {
+			title = t
+		}
+	}
+
+	// Switch to the new tab
+	if _, err = page.Activate(); err != nil {
+		t.logger.Info("Failed to activate new tab, but tab was created")
+	}
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("Created and switched to new tab: %s", title),
+			Data: map[string]interface{}{
+				"page_id": pageID,
+				"url":     url,
+				"title":   title,
+				"action":  "create",
+			},
+		}},
+	}, nil
+}
+
+func (t *SwitchTabTool) switchTab(args map[string]interface{}, timeout int) (*types.CallToolResponse, error) {
+	// Get all pages
+	pages := t.browserMgr.GetAllPages()
+	if len(pages) == 0 {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: "No tabs available to switch to",
+			}},
+			IsError: true,
+		}, nil
+	}
+
+	var targetPage *browser.PageInfo
+	var targetID string
+
+	// Check if specific page_id is provided in target
+	if target, ok := args["target"].(string); ok && target != "" {
+		targetID = target
+		for _, page := range pages {
+			if page.PageID == targetID {
+				targetPage = &page
+				break
+			}
+		}
+		if targetPage == nil {
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: fmt.Sprintf("Tab with page_id '%s' not found", targetID),
+				}},
+				IsError: true,
+			}, nil
+		}
+	} else if switchTo, ok := args["switch_to"].(string); ok {
+		// Handle directional switching
+		currentPageID := t.browserMgr.GetCurrentPageID()
+		currentIndex := -1
+		
+		// Find current page index
+		for i, page := range pages {
+			if page.PageID == currentPageID {
+				currentIndex = i
+				break
+			}
+		}
+
+		switch switchTo {
+		case "next":
+			nextIndex := (currentIndex + 1) % len(pages)
+			targetPage = &pages[nextIndex]
+		case "previous":
+			prevIndex := currentIndex - 1
+			if prevIndex < 0 {
+				prevIndex = len(pages) - 1
+			}
+			targetPage = &pages[prevIndex]
+		case "first":
+			targetPage = &pages[0]
+		case "last":
+			targetPage = &pages[len(pages)-1]
+		default:
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: fmt.Sprintf("Unknown switch_to value: %s. Use 'next', 'previous', 'first', or 'last'", switchTo),
+				}},
+				IsError: true,
+			}, nil
+		}
+		targetID = targetPage.PageID
+	} else {
+		// Default to next tab
+		currentPageID := t.browserMgr.GetCurrentPageID()
+		currentIndex := -1
+		
+		for i, page := range pages {
+			if page.PageID == currentPageID {
+				currentIndex = i
+				break
+			}
+		}
+		
+		nextIndex := (currentIndex + 1) % len(pages)
+		targetPage = &pages[nextIndex]
+		targetID = targetPage.PageID
+	}
+
+	// Switch to target tab
+	if err := t.browserMgr.SwitchToPage(targetID); err != nil {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Failed to switch to tab: %v", err),
+			}},
+			IsError: true,
+		}, nil
+	}
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("Switched to tab: %s (%s)", targetPage.Title, targetPage.URL),
+			Data: map[string]interface{}{
+				"page_id":      targetID,
+				"url":          targetPage.URL,
+				"title":        targetPage.Title,
+				"action":       "switch",
+				"total_tabs":   len(pages),
+			},
+		}},
+	}, nil
+}
+
+func (t *SwitchTabTool) closeTab(args map[string]interface{}, timeout int) (*types.CallToolResponse, error) {
+	pages := t.browserMgr.GetAllPages()
+	if len(pages) <= 1 {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: "Cannot close the last remaining tab",
+			}},
+			IsError: true,
+		}, nil
+	}
+
+	var targetID string
+	if target, ok := args["target"].(string); ok && target != "" {
+		if target == "current" {
+			targetID = t.browserMgr.GetCurrentPageID()
+		} else {
+			targetID = target
+		}
+	} else {
+		targetID = t.browserMgr.GetCurrentPageID()
+	}
+
+	// Find the tab to close
+	var targetPage *browser.PageInfo
+	for _, page := range pages {
+		if page.PageID == targetID {
+			targetPage = &page
+			break
+		}
+	}
+
+	if targetPage == nil {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Tab with page_id '%s' not found", targetID),
+			}},
+			IsError: true,
+		}, nil
+	}
+
+	// If closing current tab, switch to another first
+	currentPageID := t.browserMgr.GetCurrentPageID()
+	if targetID == currentPageID {
+		// Find next tab to switch to
+		var nextPageID string
+		for _, page := range pages {
+			if page.PageID != targetID {
+				nextPageID = page.PageID
+				break
+			}
+		}
+		
+		if nextPageID != "" {
+			if err := t.browserMgr.SwitchToPage(nextPageID); err != nil {
+				t.logger.Info("Failed to switch before closing, continuing with close")
+			}
+		}
+	}
+
+	// Close the tab
+	if err := t.browserMgr.ClosePage(targetID); err != nil {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: fmt.Sprintf("Failed to close tab: %v", err),
+			}},
+			IsError: true,
+		}, nil
+	}
+
+	remainingTabs := len(pages) - 1
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: fmt.Sprintf("Closed tab: %s (%d tabs remaining)", targetPage.Title, remainingTabs),
+			Data: map[string]interface{}{
+				"closed_page_id": targetID,
+				"closed_title":   targetPage.Title,
+				"closed_url":     targetPage.URL,
+				"action":         "close",
+				"remaining_tabs": remainingTabs,
+			},
+		}},
+	}, nil
+}
+
+func (t *SwitchTabTool) listTabs(timeout int) (*types.CallToolResponse, error) {
+	pages := t.browserMgr.GetAllPages()
+	currentPageID := t.browserMgr.GetCurrentPageID()
+
+	if len(pages) == 0 {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: "No tabs are currently open",
+			}},
+		}, nil
+	}
+
+	var tabList []string
+	tabData := make([]map[string]interface{}, 0, len(pages))
+
+	tabList = append(tabList, fmt.Sprintf("Open tabs (%d total):", len(pages)))
+	tabList = append(tabList, "")
+
+	for i, page := range pages {
+		status := ""
+		if page.PageID == currentPageID {
+			status = " [CURRENT]"
+		}
+		
+		title := page.Title
+		if title == "" {
+			title = "Untitled"
+		}
+
+		tabList = append(tabList, fmt.Sprintf("%d. %s%s", i+1, title, status))
+		tabList = append(tabList, fmt.Sprintf("   URL: %s", page.URL))
+		tabList = append(tabList, fmt.Sprintf("   Page ID: %s", page.PageID))
+		if i < len(pages)-1 {
+			tabList = append(tabList, "")
+		}
+
+		tabData = append(tabData, map[string]interface{}{
+			"index":      i + 1,
+			"page_id":    page.PageID,
+			"title":      title,
+			"url":        page.URL,
+			"is_current": page.PageID == currentPageID,
+		})
+	}
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: strings.Join(tabList, "\n"),
+			Data: map[string]interface{}{
+				"tabs":        tabData,
+				"total_tabs":  len(pages),
+				"current_id":  currentPageID,
+				"action":      "list",
+			},
+		}},
+	}, nil
+}
+
+func (t *SwitchTabTool) closeAllTabs(timeout int) (*types.CallToolResponse, error) {
+	pages := t.browserMgr.GetAllPages()
+	if len(pages) <= 1 {
+		return &types.CallToolResponse{
+			Content: []types.ToolContent{{
+				Type: "text",
+				Text: "Only one tab open, cannot close all tabs",
+			}},
+			IsError: true,
+		}, nil
+	}
+
+	currentPageID := t.browserMgr.GetCurrentPageID()
+	var closedCount int
+	var errors []string
+
+	// Close all tabs except current
+	for _, page := range pages {
+		if page.PageID != currentPageID {
+			if err := t.browserMgr.ClosePage(page.PageID); err != nil {
+				errors = append(errors, fmt.Sprintf("Failed to close %s: %v", page.Title, err))
+			} else {
+				closedCount++
+			}
+		}
+	}
+
+	responseText := fmt.Sprintf("Closed %d tabs, keeping current tab open", closedCount)
+	if len(errors) > 0 {
+		responseText += fmt.Sprintf("\n\nErrors encountered:\n%s", strings.Join(errors, "\n"))
+	}
+
+	return &types.CallToolResponse{
+		Content: []types.ToolContent{{
+			Type: "text",
+			Text: responseText,
+			Data: map[string]interface{}{
+				"closed_count": closedCount,
+				"errors":       errors,
+				"action":       "close_all",
+				"remaining_tabs": 1,
+			},
+		}},
+		IsError: len(errors) > 0,
+	}, nil
+}
