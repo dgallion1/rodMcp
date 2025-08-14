@@ -628,7 +628,13 @@ func showHelp() {
 OVERVIEW:
     RodMCP provides comprehensive browser automation and file system access through
     the Model Context Protocol (MCP). It offers 26+ tools for web development,
-    testing, and automation with robust security controls.
+    testing, and automation with robust security controls and timeout protection.
+    
+    🛡️ RELIABILITY FEATURES:
+    • Timeout Protection: All operations have timeouts (30s browser ops, 30s file I/O)
+    • Helpful Error Messages: Clear guidance when operations fail
+    • Memory Protection: File size limits prevent memory exhaustion
+    • Non-Blocking Design: Tools never hang your conversation indefinitely
 
 USAGE:
     %s [COMMAND] [FLAGS]
@@ -653,7 +659,7 @@ COMMANDS:
     --window-height HEIGHT Browser window height in pixels (default: 1080)
 
 ⚙️  PROCESS MANAGEMENT FLAGS:
-    --daemon              Run server in daemon mode (background process)
+    --daemon              Run server in daemon mode (prevents LLM blocking)
     --pid-file FILE       Path to PID file for daemon mode (optional)
 
 📁 FILE ACCESS SECURITY FLAGS:

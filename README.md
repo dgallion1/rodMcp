@@ -9,6 +9,9 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 - 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless (browser visibility fixed!)
 - 🛠️ **26 Comprehensive Tools** - Complete browser control + screen scraping + table extraction + file system + HTTP requests + interactive help
 - 🔧 **Daemon Mode** - Background process prevents Claude blocking with automatic startup/shutdown
+- ⏰ **Timeout Protection** - All operations have timeouts (30s browser ops, 30s file I/O) - no infinite waiting
+- 🛡️ **Error Guidance** - Helpful error messages guide you to correct next steps instead of cryptic failures
+- 📊 **Memory Protection** - File size limits (10MB default) prevent memory exhaustion
 - 🏠 **Easy Install** - No sudo required with local user installation
 - 🚀 **Auto Go Install** - Makefile can install Go locally if not present
 - ⚡ **Go 1.24.5+ Performance** - Fast, reliable browser automation
@@ -581,6 +584,53 @@ create a summary report with headlines and links."
 "Create an interactive CSS tutorial showing flexbox examples. 
 Use visible browser mode so I can see each step."
 ```
+
+## 🛡️ Reliability & Error Handling
+
+### ⏰ **Non-Blocking Design**
+**🎉 RodMCP will never block your Claude conversation!**
+
+- **All operations have timeouts** - Browser ops (30s), file I/O (30s), commands (10s)
+- **Graceful failures** - Tools fail fast with clear explanations, not infinite hanging
+- **Memory protection** - File operations respect size limits (10MB default)
+- **Resource management** - Automatic cleanup and proper error handling
+
+### 🛠️ **Improved Error Messages**
+**Before vs After Examples:**
+
+❌ **Old Error**: `"No pages available for element interaction"`  
+✅ **New Error**: 
+```
+No browser pages are currently open. To use `click_element`, you first need to:
+
+1. Create a page: use `create_page` to make a new HTML page, or
+2. Navigate to a URL: use `navigate_page` to load an existing website
+
+Then you can interact with elements on the page.
+```
+
+### 🔧 **Timeout Protection Across All Tools**
+
+| **Operation Type** | **Timeout** | **Protection Against** |
+|-------------------|-------------|----------------------|
+| Browser launch/connect | 30 seconds | Slow browser startup |
+| File read/write operations | 30 seconds | Slow storage/network filesystems |
+| Command execution | 10 seconds | Hanging system commands |
+| HTTP requests | Configurable | Network timeouts |
+
+### 📊 **Size & Resource Limits**
+
+- **File size limits**: 10MB default (configurable via `--max-file-size`)
+- **Memory protection**: Size validation before file operations
+- **Directory creation**: Automatic parent directory creation for file writes
+- **Path validation**: Security controls prevent unauthorized file access
+
+### 🚀 **Progressive Error Recovery**
+
+Tools now guide you through proper workflow progression:
+1. **Setup Phase**: `create_page` or `navigate_page` 
+2. **Interaction Phase**: `click_element`, `type_text`, etc.
+3. **Validation Phase**: `take_screenshot`, `assert_element`
 
 ## Architecture
 
