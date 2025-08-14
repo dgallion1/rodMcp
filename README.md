@@ -253,61 +253,141 @@ make install  # Automatically stops existing processes (requires sudo)
 make build
 ```
 
-### 4. Configure Claude Code (Choose Connection Mode)
+### 4. Configure File Access Paths (Choose Your Security Level)
 
-RodMCP supports two connection modes: **stdio** (recommended) and **HTTP**. Choose based on your needs:
+Before connecting to Claude, configure which directories RodMCP can access:
+
+#### 🔒 **Option A: Secure Default (Recommended for beginners)**
+```bash
+# Default: Only current working directory access
+# No configuration needed - safest option
+```
+
+#### 🌐 **Option B: Web Development Setup**
+```bash
+# Allow common web development directories
+export WEB_PATHS="/home/$USER/web,/home/$USER/projects,/tmp"
+```
+
+#### ⚙️ **Option C: Custom Configuration File**
+```bash
+# Create a custom config file
+cat > ~/.config/rodmcp-security.json << 'EOF'
+{
+  "allowed_paths": [
+    "/home/YOUR_USERNAME/projects",
+    "/home/YOUR_USERNAME/web", 
+    "/tmp/screenshots"
+  ],
+  "deny_paths": ["/etc", "/root", "/var/log"],
+  "allow_temp_files": true,
+  "max_file_size": 52428800
+}
+EOF
+
+# Replace YOUR_USERNAME with your actual username
+sed -i "s/YOUR_USERNAME/$USER/g" ~/.config/rodmcp-security.json
+```
+
+#### 🤔 **What Paths Should I Allow?**
+
+**For Web Development:**
+- `~/projects` or `~/web` - Your development projects
+- `/tmp` or `/tmp/screenshots` - Temporary files and screenshots
+- `/var/www` - Web server directories (if applicable)
+
+**For General Use:**
+- `~/Documents` - Document access
+- `~/Downloads` - Downloaded files
+- Specific project directories only
+
+**⚠️ Never Allow:**
+- `/` (entire filesystem) - Security risk
+- `/etc` - System configuration
+- `/root` - Root user files  
+- `~/.ssh` - SSH keys
+
+### 5. Connect to Claude Code
+
+Now connect RodMCP to Claude using your chosen security configuration:
 
 #### 📡 **Stdio Mode (Recommended)**
-**⚠️ Use the direct `rodmcp` binary, NOT `rodmcp-manager`:**
+
+**⚠️ Always use the direct `rodmcp` binary, NOT `rodmcp-manager`:**
 
 ```bash
-# Add RodMCP to Claude Code (use the DIRECT binary)
+# Option A: Secure Default
 claude mcp add-json rodmcp '{"type": "stdio", "command": "'"$HOME"'/.local/bin/rodmcp", "args": ["--headless", "--log-level=info"], "env": {}}'
 
-# Verify it's working
-claude mcp list  # Should show ✓ Connected
-```
+# Option B: Web Development  
+claude mcp add-json rodmcp '{"type": "stdio", "command": "'"$HOME"'/.local/bin/rodmcp", "args": ["--headless", "--allowed-paths='"$WEB_PATHS"'", "--allow-temp", "--max-file-size=52428800"], "env": {}}'
 
-**🚫 Common Mistake**: Never use `rodmcp-manager` as it causes connection conflicts by running multiple instances simultaneously.
-
-#### 🌐 **HTTP Mode (Alternative)**
-For environments where stdio doesn't work or for debugging purposes:
-
-**1. Start RodMCP in HTTP mode:**
-```bash
-# Run in background (recommended)
-rodmcp --http --port=8090 --headless --log-level=info &
-
-# Or run in foreground for debugging
-rodmcp --http --port=8090 --headless --log-level=debug
-```
-
-**2. Configure Claude Code for HTTP:**
-```bash
-# Add RodMCP HTTP server to Claude Code
-claude mcp add-json rodmcp-http '{"type": "http", "url": "http://localhost:8090", "env": {}}'
+# Option C: Custom Config File
+claude mcp add-json rodmcp '{"type": "stdio", "command": "'"$HOME"'/.local/bin/rodmcp", "args": ["--headless", "--config='"$HOME"'/.config/rodmcp-security.json"], "env": {}}'
 
 # Verify connection
 claude mcp list  # Should show ✓ Connected
 ```
 
-**HTTP Mode Features:**
-- Same 23 tools as stdio mode
-- RESTful API at `http://localhost:8090`
-- Useful for debugging with browser dev tools
-- Can be accessed by multiple clients simultaneously
-- Optional authentication via environment variables
+#### 🌐 **HTTP Mode (Alternative)**
 
-**Stop HTTP server:**
+**1. Start HTTP server with your chosen security configuration:**
+
 ```bash
-# Stop background process
-pkill -f "rodmcp.*http"
+# Option A: Secure Default
+rodmcp http --port=8090 --headless --log-level=info
 
-# Or use built-in process management
-make stop-processes
+# Option B: Web Development
+rodmcp http --port=8090 --headless --allowed-paths="$WEB_PATHS" --allow-temp --max-file-size=52428800
+
+# Option C: Custom Config File
+rodmcp http --port=8090 --headless --config="$HOME/.config/rodmcp-security.json"
 ```
 
-### 5. Test with Claude
+**2. Connect to Claude Code:**
+```bash
+claude mcp add-json rodmcp-http '{"type": "http", "url": "http://localhost:8090", "env": {}}'
+```
+
+#### ⚙️ **Advanced Configuration Examples**
+
+**Development Environment:**
+```bash
+# Visible browser for learning, restricted to project directory
+claude mcp add-json rodmcp-dev '{"type": "stdio", "command": "'"$HOME"'/.local/bin/rodmcp", "args": ["--log-level=debug", "--window-width=1280"], "env": {}}'
+```
+
+**Production Environment:**
+```json
+# Create production.json
+{
+  "allowed_paths": ["/app/web", "/app/uploads"],
+  "deny_paths": ["/etc", "/root", "/var/log"],
+  "restrict_to_working_dir": false,
+  "allow_temp_files": false,
+  "max_file_size": 10485760
+}
+```
+
+```bash
+# Use in production
+claude mcp add-json rodmcp-prod '{"type": "stdio", "command": "'"$HOME"'/.local/bin/rodmcp", "args": ["--headless", "--config=production.json", "--log-level=warn"], "env": {}}'
+```
+
+**Multi-Environment Setup:**
+```bash
+# Development (visible, debug logging)
+claude mcp add-json rodmcp-dev '{"type": "stdio", "command": "'"$HOME"'/.local/bin/rodmcp", "args": ["--log-level=debug"], "env": {}}'
+
+# Production (headless, minimal logging, restricted paths)  
+claude mcp add-json rodmcp-prod '{"type": "stdio", "command": "'"$HOME"'/.local/bin/rodmcp", "args": ["--headless", "--config=prod.json", "--log-level=error"], "env": {}}'
+
+# Switch between environments
+claude mcp use rodmcp-dev    # For development
+claude mcp use rodmcp-prod   # For production
+```
+
+### 6. Test with Claude
 Ask Claude: *"What web development tools do you have available?"*
 
 Claude should respond with the 23 RodMCP tools listed above.
@@ -697,36 +777,135 @@ type Tool interface {
 mcpServer.RegisterTool(webtools.NewYourTool(log, browserMgr))
 ```
 
-## 🔒 Security
+## 🔒 File Access Security System
 
-RodMCP includes comprehensive security features to protect against unauthorized file access:
+RodMCP implements **defense-in-depth file access controls** with multiple configuration methods to provide security without sacrificing functionality.
 
-### File Access Control
-- **Default**: Restricted to current working directory only
-- **Path Validation**: Prevents directory traversal attacks
-- **File Size Limits**: 10MB default limit for write operations
-- **Configurable Allowlists**: Specify exactly which directories are accessible
+### 🛡️ Default Security Posture
+- ✅ **Restricted to working directory only** - All file operations confined to current directory
+- ✅ **10MB file size limit** - Prevents resource exhaustion attacks
+- ✅ **Temporary file access disabled** - System temp directories blocked by default
+- ✅ **Path traversal prevention** - Automatic `../` attack mitigation
+- ✅ **Symlink resolution** - Follows symlinks with security validation
 
-### Security Configuration
-```go
-// Default secure configuration (working directory only)
-validator := NewPathValidator(DefaultFileAccessConfig())
+### ⚙️ Configuration Methods
 
-// Custom configuration with specific allowed paths
-config := &FileAccessConfig{
-    AllowedPaths: []string{"/safe/project/dir"},
-    DenyPaths:    []string{"/safe/project/dir/secrets"},
-    MaxFileSize:  50 * 1024 * 1024, // 50MB
+#### 1. 🚀 Command Line Flags (Quick Setup)
+```bash
+# Basic path configuration
+rodmcp --allowed-paths "/home/user/web,/tmp/screenshots"
+rodmcp --deny-paths "/etc,/root" --allowed-paths "/home/user"
+
+# Advanced options
+rodmcp --allow-temp --max-file-size 52428800  # 50MB limit
+rodmcp --restrict-to-workdir=false --config security.json
+```
+
+#### 2. 📄 JSON Configuration File (Advanced & Persistent)
+Create `config.json`:
+```json
+{
+  "allowed_paths": ["/home/user/projects", "/var/www", "/tmp/screenshots"],
+  "deny_paths": ["/etc", "/root", "/var/log", "/proc", "/sys"],
+  "restrict_to_working_dir": false,
+  "allow_temp_files": true,
+  "max_file_size": 52428800
 }
 ```
 
-### Security Features
-- **Absolute Path Resolution**: All paths converted to absolute before validation  
-- **Symlink Following**: Resolves symlinks to prevent bypass attempts
-- **Deny List Priority**: Explicitly blocked paths override allow lists
-- **Comprehensive Logging**: All access attempts logged for audit
+Then use: `rodmcp --config config.json`
 
-See [FILE_ACCESS_SECURITY.md](FILE_ACCESS_SECURITY.md) for detailed security documentation.
+#### 3. 🔧 Programmatic Configuration (Custom Builds)
+```go
+// Default secure configuration
+validator := webtools.NewPathValidator(webtools.DefaultFileAccessConfig())
+
+// Custom security policy
+config := &webtools.FileAccessConfig{
+    AllowedPaths:         []string{"/safe/project/dir", "/uploads"},
+    DenyPaths:           []string{"/safe/project/dir/secrets", "/etc"},
+    RestrictToWorkingDir: false,
+    AllowTempFiles:      true,
+    MaxFileSize:         100 * 1024 * 1024, // 100MB
+}
+validator := webtools.NewPathValidator(config)
+```
+
+### 🔐 Security Features & Precedence
+
+**Configuration Precedence (highest to lowest):**
+1. **Deny paths** - Always block access (overrides everything)
+2. **Command line flags** - Override config file settings
+3. **Config file** - Override default settings  
+4. **Secure defaults** - Working directory only, 10MB limit
+
+**Security Validations:**
+- **Absolute Path Resolution** - All paths normalized to absolute paths
+- **Symlink Resolution** - Follows symlinks to real paths before validation
+- **Path Traversal Protection** - Prevents `../` directory escape attempts
+- **File Size Enforcement** - Configurable limits on read/write operations
+- **Comprehensive Audit Logging** - All access attempts logged with full context
+
+### 📋 Common Security Configurations
+
+#### Development (Restrictive)
+```bash
+# Default - working directory only, safe for development
+rodmcp  # Uses default secure configuration
+```
+
+#### Web Development (Moderate) 
+```bash
+# Allow web directories but protect system files
+rodmcp --allowed-paths "/home/user/web,/var/www,/tmp" \
+       --deny-paths "/etc,/root,/var/log" \
+       --allow-temp --max-file-size 50MB
+```
+
+#### Testing/CI (Controlled Permissive)
+```json
+{
+  "allowed_paths": ["/"],
+  "deny_paths": ["/etc", "/root", "/proc", "/sys", "/var/log", "/boot"],
+  "max_file_size": 104857600,
+  "allow_temp_files": false
+}
+```
+
+### 🚨 Security Warnings
+
+⚠️ **High Risk Configurations:**
+```bash
+# DANGEROUS - Allows access to entire filesystem
+rodmcp --allowed-paths "/" --restrict-to-workdir=false
+
+# DANGEROUS - No file size limits (resource exhaustion risk)  
+rodmcp --max-file-size 0
+```
+
+✅ **Recommended Safe Practices:**
+- Always specify explicit `allowed_paths` for production use
+- Use `deny_paths` to protect sensitive directories
+- Keep `max_file_size` reasonable (10-100MB)
+- Enable logging for security monitoring
+- Test configurations in development before production
+
+### 🔍 Security Monitoring
+
+Enable comprehensive logging to monitor file access:
+```bash
+# Development debugging
+rodmcp --log-level debug --log-dir ./security-logs
+
+# Production monitoring
+rodmcp --log-level info --config production-security.json
+```
+
+Log entries include:
+- File access attempts (allowed/denied)
+- Configuration loading events
+- Security violation attempts
+- Path resolution and validation results
 
 ## Contributing
 

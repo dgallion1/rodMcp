@@ -1,9 +1,16 @@
 # Binaries
 bin/
+rodmcp
+server
+rodmcp-*
 *.exe
 *.dll
 *.so
 *.dylib
+
+# Go build outputs
+cmd/server/server
+cmd/*/main
 
 # Test artifacts
 *.html
@@ -32,3 +39,11 @@ Thumbs.db
 *.tmp
 temp/
 tmp/
+
+# User configuration files (keep examples)
+config.json
+*-config.json
+security.json
+production.json
+development.json
+!config.example.json

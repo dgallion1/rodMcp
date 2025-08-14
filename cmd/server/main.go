@@ -26,6 +26,55 @@ var (
 	BuildDate = "unknown"    // Build timestamp
 )
 
+// loadFileAccessConfig creates file access configuration from command line flags and config file
+func loadFileAccessConfig(configFile, allowedPaths, denyPaths string, allowTemp, restrictToWorkDir bool, maxFileSize int64) (*webtools.FileAccessConfig, error) {
+	var config *webtools.FileAccessConfig
+
+	// Start with default configuration
+	config = webtools.DefaultFileAccessConfig()
+
+	// Load from config file if specified
+	if configFile != "" {
+		fileData, err := os.ReadFile(configFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read config file %s: %w", configFile, err)
+		}
+
+		if err := json.Unmarshal(fileData, config); err != nil {
+			return nil, fmt.Errorf("failed to parse config file %s: %w", configFile, err)
+		}
+	}
+
+	// Override with command line flags if provided
+	if allowedPaths != "" {
+		config.AllowedPaths = strings.Split(allowedPaths, ",")
+		// Trim whitespace from paths
+		for i, path := range config.AllowedPaths {
+			config.AllowedPaths[i] = strings.TrimSpace(path)
+		}
+	}
+
+	if denyPaths != "" {
+		config.DenyPaths = strings.Split(denyPaths, ",")
+		// Trim whitespace from paths
+		for i, path := range config.DenyPaths {
+			config.DenyPaths[i] = strings.TrimSpace(path)
+		}
+	}
+
+	// Apply command line overrides
+	config.AllowTempFiles = allowTemp
+	config.RestrictToWorkingDir = restrictToWorkDir
+	config.MaxFileSize = maxFileSize
+
+	// If custom allowed paths are specified, disable working directory restriction
+	if allowedPaths != "" {
+		config.RestrictToWorkingDir = false
+	}
+
+	return config, nil
+}
+
 func main() {
 	// Check for subcommands first
 	if len(os.Args) > 1 {
@@ -64,6 +113,14 @@ func main() {
 		slowMotion   = flag.Duration("slow-motion", 0, "Slow motion delay between actions")
 		windowWidth  = flag.Int("window-width", 1920, "Browser window width")
 		windowHeight = flag.Int("window-height", 1080, "Browser window height")
+		
+		// File access configuration flags
+		configFile        = flag.String("config", "", "Path to configuration file (JSON format)")
+		allowedPaths      = flag.String("allowed-paths", "", "Comma-separated list of allowed file paths")
+		denyPaths         = flag.String("deny-paths", "", "Comma-separated list of denied file paths")
+		allowTemp         = flag.Bool("allow-temp", false, "Allow access to temporary files")
+		restrictToWorkDir = flag.Bool("restrict-to-workdir", true, "Restrict file access to working directory only")
+		maxFileSize       = flag.Int64("max-file-size", 10485760, "Maximum file size in bytes (default: 10MB)")
 	)
 	flag.Parse()
 
@@ -146,8 +203,21 @@ func main() {
 	// Testing and assertion tools
 	mcpServer.RegisterTool(webtools.NewAssertElementTool(log, browserMgr))
 	
+	// Load file access configuration
+	fileConfig, err := loadFileAccessConfig(*configFile, *allowedPaths, *denyPaths, *allowTemp, *restrictToWorkDir, *maxFileSize)
+	if err != nil {
+		log.Fatal("Failed to load file access configuration", zap.Error(err))
+	}
+
+	log.Info("File access configuration loaded",
+		zap.Strings("allowed_paths", fileConfig.AllowedPaths),
+		zap.Strings("deny_paths", fileConfig.DenyPaths),
+		zap.Bool("restrict_to_workdir", fileConfig.RestrictToWorkingDir),
+		zap.Bool("allow_temp_files", fileConfig.AllowTempFiles),
+		zap.Int64("max_file_size", fileConfig.MaxFileSize))
+
 	// File system tools with path validation
-	fileValidator := webtools.NewPathValidator(webtools.DefaultFileAccessConfig())
+	fileValidator := webtools.NewPathValidator(fileConfig)
 	mcpServer.RegisterTool(webtools.NewReadFileTool(log, fileValidator))
 	mcpServer.RegisterTool(webtools.NewWriteFileTool(log, fileValidator))
 	mcpServer.RegisterTool(webtools.NewListDirectoryTool(log, fileValidator))
@@ -211,6 +281,14 @@ func startHTTPServer() {
 		slowMotion   = flag.Duration("slow-motion", 0, "Slow motion delay between actions")
 		windowWidth  = flag.Int("window-width", 1920, "Browser window width")
 		windowHeight = flag.Int("window-height", 1080, "Browser window height")
+		
+		// File access configuration flags
+		configFile        = flag.String("config", "", "Path to configuration file (JSON format)")
+		allowedPaths      = flag.String("allowed-paths", "", "Comma-separated list of allowed file paths")
+		denyPaths         = flag.String("deny-paths", "", "Comma-separated list of denied file paths")
+		allowTemp         = flag.Bool("allow-temp", false, "Allow access to temporary files")
+		restrictToWorkDir = flag.Bool("restrict-to-workdir", true, "Restrict file access to working directory only")
+		maxFileSize       = flag.Int64("max-file-size", 10485760, "Maximum file size in bytes (default: 10MB)")
 	)
 	flag.CommandLine.Parse(os.Args[2:]) // Skip "rodmcp http"
 
@@ -291,8 +369,21 @@ func startHTTPServer() {
 	// Testing and assertion tools
 	httpServer.RegisterTool(webtools.NewAssertElementTool(log, browserMgr))
 	
+	// Load file access configuration for HTTP server
+	fileConfigHTTP, err := loadFileAccessConfig(*configFile, *allowedPaths, *denyPaths, *allowTemp, *restrictToWorkDir, *maxFileSize)
+	if err != nil {
+		log.Fatal("Failed to load file access configuration", zap.Error(err))
+	}
+
+	log.Info("HTTP server file access configuration loaded",
+		zap.Strings("allowed_paths", fileConfigHTTP.AllowedPaths),
+		zap.Strings("deny_paths", fileConfigHTTP.DenyPaths),
+		zap.Bool("restrict_to_workdir", fileConfigHTTP.RestrictToWorkingDir),
+		zap.Bool("allow_temp_files", fileConfigHTTP.AllowTempFiles),
+		zap.Int64("max_file_size", fileConfigHTTP.MaxFileSize))
+
 	// File system tools with path validation
-	fileValidator2 := webtools.NewPathValidator(webtools.DefaultFileAccessConfig())
+	fileValidator2 := webtools.NewPathValidator(fileConfigHTTP)
 	httpServer.RegisterTool(webtools.NewReadFileTool(log, fileValidator2))
 	httpServer.RegisterTool(webtools.NewWriteFileTool(log, fileValidator2))
 	httpServer.RegisterTool(webtools.NewListDirectoryTool(log, fileValidator2))
@@ -411,7 +502,7 @@ func getAllTools() map[string]mcp.Tool {
 	// Testing and assertion tools
 	tools["assert_element"] = webtools.NewAssertElementTool(log, browserMgr)
 	
-	// File system tools with path validation
+	// File system tools with path validation (use default config for CLI tools)
 	fileValidator3 := webtools.NewPathValidator(webtools.DefaultFileAccessConfig())
 	tools["read_file"] = webtools.NewReadFileTool(log, fileValidator3)
 	tools["write_file"] = webtools.NewWriteFileTool(log, fileValidator3)
@@ -439,54 +530,149 @@ func showVersion() {
 }
 
 func showHelp() {
-	fmt.Printf(`RodMCP - Model Context Protocol Server for Web Development
+	fmt.Printf(`🤖 RodMCP - Model Context Protocol Server for Web Development
+
+OVERVIEW:
+    RodMCP provides comprehensive browser automation and file system access through
+    the Model Context Protocol (MCP). It offers 26+ tools for web development,
+    testing, and automation with robust security controls.
 
 USAGE:
     %s [COMMAND] [FLAGS]
 
 COMMANDS:
-    (no command)       Start MCP server (default)
-    version           Show version information
-    http              Start HTTP-based MCP server
-    list-tools, tools  List all available MCP tools
-    describe-tool NAME Show detailed documentation for a specific tool
+    (default)          Start stdio MCP server for Claude Desktop integration
+    version           Show version information and build details  
+    http              Start HTTP-based MCP server for API access
+    list-tools        List all 26 available tools with descriptions
+    describe-tool     Show detailed documentation for a specific tool
     schema            Export complete MCP tool schema as JSON
-    help              Show this help message
+    help              Show this comprehensive help message
 
-SERVER FLAGS (for default MCP server):
-    --headless            Run browser in headless mode (default: false)
-    --debug               Enable browser debug mode (default: false)
-    --log-level LEVEL     Log level: debug, info, warn, error (default: info)
-    --log-dir DIR         Log directory (default: logs)
-    --slow-motion DURATION Slow motion delay between actions
-    --window-width WIDTH  Browser window width (default: 1920)
-    --window-height HEIGHT Browser window height (default: 1080)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🖥️  BROWSER CONFIGURATION FLAGS:
+    --headless            Run browser in headless mode
+                          Default: false (stdio), true (http)
+    --debug               Enable browser debug mode and verbose logging
+    --slow-motion DURATION Add delay between browser actions (e.g. 100ms)
+    --window-width WIDTH  Browser window width in pixels (default: 1920)
+    --window-height HEIGHT Browser window height in pixels (default: 1080)
+
+📁 FILE ACCESS SECURITY FLAGS:
+    --config FILE         Path to JSON configuration file for advanced settings
+    --allowed-paths PATHS Comma-separated list of allowed directory paths
+    --deny-paths PATHS    Comma-separated list of explicitly denied paths
+    --allow-temp          Allow access to system temporary directory
+    --restrict-to-workdir Restrict all file access to current directory only
+                          (default: true - automatically disabled if --allowed-paths set)
+    --max-file-size BYTES Maximum file size for operations (default: 10485760 = 10MB)
+
+📋 LOGGING & DEBUGGING FLAGS:
+    --log-level LEVEL     Set logging verbosity: debug, info, warn, error (default: info)
+    --log-dir DIR         Directory for log files (default: logs/)
+
+🌐 HTTP SERVER SPECIFIC FLAGS (for 'rodmcp http'):
+    --port PORT           HTTP server port (default: 8080)
+    (All browser and file access flags above also apply to HTTP mode)
 
 ENVIRONMENT VARIABLES:
-    RODMCP_BROWSER_PATH   Override browser binary path (optional)
+    RODMCP_BROWSER_PATH   Override browser binary path (auto-detected if not set)
 
-HTTP SERVER FLAGS (for 'rodmcp http'):
-    --port PORT           HTTP server port (default: 8080)
-    --headless            Run browser in headless mode (default: true for HTTP)
-    --debug               Enable browser debug mode (default: false)
-    --log-level LEVEL     Log level: debug, info, warn, error (default: info)
-    --log-dir DIR         Log directory (default: logs)
-    --slow-motion DURATION Slow motion delay between actions
-    --window-width WIDTH  Browser window width (default: 1920)
-    --window-height HEIGHT Browser window height (default: 1080)
-    (Also supports RODMCP_BROWSER_PATH environment variable)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-EXAMPLES:
-    %s                    # Start stdio MCP server
-    %s http              # Start HTTP MCP server on port 8080
-    %s http --port 3000  # Start HTTP MCP server on port 3000
-    %s list-tools        # Show all available tools
-    %s describe-tool click_element  # Show tool documentation
-    %s schema            # Export tool definitions
-    %s --headless        # Start stdio server in headless mode
+🔒 FILE ACCESS SECURITY MODEL:
 
-For more information, see: https://github.com/your-org/rodmcp
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+    RodMCP implements defense-in-depth file access controls to prevent unauthorized
+    access while maintaining functionality for legitimate automation tasks.
+
+    DEFAULT SECURITY POSTURE:
+    ✅ Restricted to current working directory only
+    ✅ 10MB file size limit to prevent resource exhaustion  
+    ✅ Temporary file access disabled
+    ✅ Path traversal attack prevention
+    ✅ Symlink resolution with security validation
+
+    CONFIGURATION METHODS:
+    1. Command Line Flags (quick setup)
+    2. JSON Configuration File (advanced, persistent settings)
+    3. Programmatic (modify DefaultFileAccessConfig() in code)
+
+    JSON CONFIG FILE FORMAT:
+    {
+      "allowed_paths": ["/home/user/projects", "/var/www"],
+      "deny_paths": ["/etc", "/root", "/var/log"], 
+      "restrict_to_working_dir": false,
+      "allow_temp_files": true,
+      "max_file_size": 52428800
+    }
+
+    SECURITY PRECEDENCE (highest to lowest):
+    1. Deny paths (always block, overrides everything)
+    2. Command line flags (override config file)
+    3. Config file settings (override defaults)
+    4. Secure defaults (working directory only)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📖 COMMON USAGE EXAMPLES:
+
+    Basic Server Startup:
+    %s                                    # Stdio MCP (Claude Desktop)
+    %s http                              # HTTP MCP server on port 8080
+    %s http --port 3000                  # HTTP server on custom port
+
+    Tool Discovery & Documentation:
+    %s list-tools                        # Show all 26 available tools
+    %s describe-tool click_element       # Detailed docs for specific tool
+    %s schema                            # Export JSON schema for integration
+
+    Browser Configuration:
+    %s --headless --debug               # Headless mode with debug logging
+    %s --window-width 1280 --window-height 720  # Custom window size
+    %s --slow-motion 200ms              # Add delays for debugging
+
+    File Access Examples:
+    %s --allowed-paths "/home/user/web,/tmp"     # Allow specific paths
+    %s --config security.json                   # Use JSON config file
+    %s --allow-temp --max-file-size 50MB        # Allow temp + larger files
+    %s --deny-paths "/etc,/root" --allowed-paths "/home"  # Mixed allow/deny
+
+    Development & Debugging:
+    %s --log-level debug --log-dir ./logs      # Verbose logging
+    %s http --debug --port 8080 --allow-temp   # HTTP debug mode
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🛠️  TOOL CATEGORIES (26 tools total):
+
+    🌐 Browser Automation (7): create_page, navigate_page, take_screenshot,
+                               execute_script, set_browser_visibility, live_preview
+    🖱️  UI Interaction (4):     click_element, type_text, hover_element, keyboard_shortcuts  
+    📑 Tab Management (1):      switch_tab
+    ⏳ Timing & Waiting (3):    wait, wait_for_element, wait_for_condition
+    📖 Data Extraction (3):     get_element_text, get_element_attribute, scroll
+    🕷️  Screen Scraping (2):    screen_scrape, extract_table
+    📝 Form Automation (1):     form_fill
+    🧪 Testing & Assertions (1): assert_element
+    📁 File System (3):         read_file, write_file, list_directory
+    🌐 Network (1):             http_request
+
+    Use '%s list-tools' for detailed descriptions of each tool.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔗 Integration & Support:
+    
+    GitHub: https://github.com/your-org/rodmcp
+    MCP Protocol: https://modelcontextprotocol.org
+    Claude Desktop Integration: Add to your MCP settings for seamless usage
+    
+    Version: %s | Build: %s | Go: 1.24.5+ | MCP: 2024-11-05
+`, 
+		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], 
+		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], 
+		os.Args[0], os.Args[0], os.Args[0], os.Args[0], Version, Commit)
 }
 
 func listTools() {

@@ -314,12 +314,17 @@ func (t *NavigatePageTool) getPageInfoWithTimeout(pageID string, timeout time.Du
 
 // ScreenshotTool takes screenshots
 type ScreenshotTool struct {
-	logger  *logger.Logger
-	browser *browser.Manager
+	logger    *logger.Logger
+	browser   *browser.Manager
+	validator *PathValidator
 }
 
 func NewScreenshotTool(log *logger.Logger, browserMgr *browser.Manager) *ScreenshotTool {
-	return &ScreenshotTool{logger: log, browser: browserMgr}
+	return &ScreenshotTool{
+		logger:    log,
+		browser:   browserMgr,
+		validator: NewPathValidator(DefaultFileAccessConfig()),
+	}
 }
 
 func (t *ScreenshotTool) Name() string {
@@ -382,7 +387,54 @@ func (t *ScreenshotTool) Execute(args map[string]interface{}) (*types.CallToolRe
 
 	filename, _ := args["filename"].(string)
 	if filename != "" {
-		if err := os.WriteFile(filename, screenshot, 0644); err != nil {
+		// Validate file path for security
+		cleanPath := filepath.Clean(filename)
+		if err := t.validator.ValidatePath(cleanPath, "write"); err != nil {
+			t.logger.WithComponent("tools").Warn("Screenshot file access denied",
+				zap.String("path", cleanPath),
+				zap.Error(err))
+			
+			// Provide helpful error message with allowed paths
+			allowedPaths := t.validator.GetAllowedPaths()
+			errorMsg := fmt.Sprintf("Screenshot file access denied: %v", err)
+			if len(allowedPaths) > 0 {
+				errorMsg += fmt.Sprintf("\n\nAllowed paths:\n")
+				for _, path := range allowedPaths {
+					errorMsg += fmt.Sprintf("  • %s\n", path)
+				}
+			}
+			
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: errorMsg,
+				}},
+				IsError: true,
+			}, nil
+		}
+
+		// Validate file size
+		if err := t.validator.ValidateFileSize(int64(len(screenshot))); err != nil {
+			t.logger.WithComponent("tools").Warn("Screenshot file size validation failed",
+				zap.String("path", cleanPath),
+				zap.Int("size", len(screenshot)),
+				zap.Error(err))
+			
+			sizeInKB := float64(len(screenshot)) / 1024
+			maxSizeInKB := float64(10*1024*1024) / 1024  // Default 10MB limit
+			errorMsg := fmt.Sprintf("Screenshot file size validation failed: %v\n\nScreenshot size: %.1f KB\nMaximum allowed: %.1f KB", 
+				err, sizeInKB, maxSizeInKB)
+			
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: errorMsg,
+				}},
+				IsError: true,
+			}, nil
+		}
+
+		if err := os.WriteFile(cleanPath, screenshot, 0644); err != nil {
 			return &types.CallToolResponse{
 				Content: []types.ToolContent{{
 					Type: "text",
@@ -395,7 +447,7 @@ func (t *ScreenshotTool) Execute(args map[string]interface{}) (*types.CallToolRe
 		return &types.CallToolResponse{
 			Content: []types.ToolContent{{
 				Type: "text",
-				Text: fmt.Sprintf("Screenshot saved to %s", filename),
+				Text: fmt.Sprintf("Screenshot saved to %s", cleanPath),
 			}},
 		}, nil
 	}
@@ -416,12 +468,14 @@ func (t *ScreenshotTool) Execute(args map[string]interface{}) (*types.CallToolRe
 type TakeElementScreenshotTool struct {
 	logger     *logger.Logger
 	browserMgr *browser.Manager
+	validator  *PathValidator
 }
 
 func NewTakeElementScreenshotTool(log *logger.Logger, browserMgr *browser.Manager) *TakeElementScreenshotTool {
 	return &TakeElementScreenshotTool{
 		logger:     log,
 		browserMgr: browserMgr,
+		validator:  NewPathValidator(DefaultFileAccessConfig()),
 	}
 }
 
@@ -670,7 +724,54 @@ func (t *TakeElementScreenshotTool) captureElementScreenshot(pageID, selector, f
 	
 	// If filename is provided, save the screenshot
 	if filename != "" {
-		if err := os.WriteFile(filename, fullScreenshot, 0644); err != nil {
+		// Validate file path for security
+		cleanPath := filepath.Clean(filename)
+		if err := t.validator.ValidatePath(cleanPath, "write"); err != nil {
+			t.logger.WithComponent("tools").Warn("Element screenshot file access denied",
+				zap.String("path", cleanPath),
+				zap.Error(err))
+			
+			// Provide helpful error message with allowed paths
+			allowedPaths := t.validator.GetAllowedPaths()
+			errorMsg := fmt.Sprintf("Element screenshot file access denied: %v", err)
+			if len(allowedPaths) > 0 {
+				errorMsg += fmt.Sprintf("\n\nAllowed paths:\n")
+				for _, path := range allowedPaths {
+					errorMsg += fmt.Sprintf("  • %s\n", path)
+				}
+			}
+			
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: errorMsg,
+				}},
+				IsError: true,
+			}, nil
+		}
+
+		// Validate file size
+		if err := t.validator.ValidateFileSize(int64(len(fullScreenshot))); err != nil {
+			t.logger.WithComponent("tools").Warn("Element screenshot file size validation failed",
+				zap.String("path", cleanPath),
+				zap.Int("size", len(fullScreenshot)),
+				zap.Error(err))
+			
+			sizeInKB := float64(len(fullScreenshot)) / 1024
+			maxSizeInKB := float64(10*1024*1024) / 1024  // Default 10MB limit
+			errorMsg := fmt.Sprintf("Element screenshot file size validation failed: %v\n\nScreenshot size: %.1f KB\nMaximum allowed: %.1f KB", 
+				err, sizeInKB, maxSizeInKB)
+			
+			return &types.CallToolResponse{
+				Content: []types.ToolContent{{
+					Type: "text",
+					Text: errorMsg,
+				}},
+				IsError: true,
+			}, nil
+		}
+
+		if err := os.WriteFile(cleanPath, fullScreenshot, 0644); err != nil {
 			return &types.CallToolResponse{
 				Content: []types.ToolContent{{
 					Type: "text",
@@ -680,7 +781,7 @@ func (t *TakeElementScreenshotTool) captureElementScreenshot(pageID, selector, f
 			}, nil
 		}
 
-		responseText := fmt.Sprintf("Element screenshot saved to %s", filename)
+		responseText := fmt.Sprintf("Element screenshot saved to %s", cleanPath)
 		if elementInfo != nil {
 			responseText += fmt.Sprintf("\n\nElement details:\n- Tag: %v\n- ID: %v\n- Classes: %v",
 				elementInfo["tag_name"], elementInfo["id"], elementInfo["class_name"])
@@ -698,7 +799,7 @@ func (t *TakeElementScreenshotTool) captureElementScreenshot(pageID, selector, f
 				Type: "text",
 				Text: responseText,
 				Data: map[string]interface{}{
-					"filename": filename,
+					"filename": cleanPath,
 					"bounds":   boundsData,
 					"element":  elementInfo,
 				},
