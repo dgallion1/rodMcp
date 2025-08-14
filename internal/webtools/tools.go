@@ -43,23 +43,28 @@ func (t *CreatePageTool) InputSchema() types.ToolSchema {
 		Properties: map[string]interface{}{
 			"filename": map[string]interface{}{
 				"type":        "string",
-				"description": "Name of the HTML file to create",
+				"description": "Name of the HTML file to create (with or without .html extension). Examples: 'landing-page', 'contact-form.html', 'dashboard'",
+				"examples":    []string{"landing-page", "contact-form.html", "dashboard", "app"},
 			},
 			"title": map[string]interface{}{
 				"type":        "string",
-				"description": "Page title",
+				"description": "Page title that appears in browser tab and search results. Examples: 'Coffee Shop Landing', 'Contact Form', 'Dashboard'",
+				"examples":    []string{"Coffee Shop Landing", "Contact Form", "My Dashboard", "Product Catalog"},
 			},
 			"html": map[string]interface{}{
 				"type":        "string",
-				"description": "HTML content for the body",
+				"description": "HTML content for the page body. Use semantic HTML5 elements like <header>, <main>, <section>, <nav>. Examples: '<h1>Welcome</h1><p>Description</p>', '<form><input type=\"email\" required></form>'",
+				"examples":    []string{"<h1>Welcome</h1><p>Sample content</p>", "<header><nav><a href=\"#\">Home</a></nav></header><main><h1>Title</h1></main>"},
 			},
 			"css": map[string]interface{}{
 				"type":        "string",
-				"description": "CSS styles",
+				"description": "CSS styles to embed in the page. Can include responsive design, animations, custom properties. Examples: 'body{font-family:Arial;margin:0} .hero{background:#333;color:white}'",
+				"examples":    []string{"body{font-family:Arial;margin:0}", ".btn{padding:10px;background:#007bff;color:white;border:none;border-radius:4px}"},
 			},
 			"javascript": map[string]interface{}{
 				"type":        "string",
-				"description": "JavaScript code",
+				"description": "JavaScript code for interactivity, event handlers, and dynamic behavior. Examples: 'document.querySelector(\".btn\").onclick = () => alert(\"Clicked!\");'",
+				"examples":    []string{"console.log('Page loaded');", "document.querySelector('.btn').onclick = () => alert('Hello!');"},
 			},
 		},
 		Required: []string{"filename", "title", "html"},
@@ -75,7 +80,11 @@ func (t *CreatePageTool) Execute(args map[string]interface{}) (*types.CallToolRe
 
 	filename, ok := args["filename"].(string)
 	if !ok {
-		return nil, fmt.Errorf("filename is required")
+		return nil, fmt.Errorf("filename parameter must be a string")
+	}
+	
+	if err := ValidateFilename(filename, t.Name()); err != nil {
+		return nil, err
 	}
 
 	title, ok := args["title"].(string)
@@ -160,7 +169,8 @@ func (t *NavigatePageTool) InputSchema() types.ToolSchema {
 		Properties: map[string]interface{}{
 			"url": map[string]interface{}{
 				"type":        "string",
-				"description": "URL or file path to navigate to",
+				"description": "URL or file path to navigate to. Supports HTTP/HTTPS URLs, local files (file://), and relative paths. Examples: 'https://example.com', 'localhost:3000', './index.html', 'file:///path/to/file.html'",
+				"examples":    []string{"https://example.com", "localhost:3000", "./index.html", "file:///home/user/page.html", "http://localhost:8080/dashboard"},
 			},
 		},
 		Required: []string{"url"},
@@ -188,7 +198,12 @@ func (t *NavigatePageTool) Execute(args map[string]interface{}) (*types.CallTool
 
 		url, ok := args["url"].(string)
 		if !ok {
-			resultChan <- result{nil, fmt.Errorf("url is required")}
+			resultChan <- result{nil, fmt.Errorf("url parameter must be a string")}
+			return
+		}
+		
+		if err := ValidateURL(url, "navigate_page"); err != nil {
+			resultChan <- result{nil, err}
 			return
 		}
 		
@@ -1810,16 +1825,20 @@ func (t *ClickElementTool) InputSchema() types.ToolSchema {
 		Properties: map[string]interface{}{
 			"selector": map[string]interface{}{
 				"type":        "string",
-				"description": "CSS selector or XPath (prefix with //) for the element to click",
+				"description": "CSS selector or XPath (prefix with //) for the element to click. CSS selectors: #id (ID), .class (class), tag (element), [attr] (attribute). XPath: //tag[@attr='value'] or //text()='content'. Examples: '#submit-btn', '.nav-link', 'button[type=\"submit\"]', '//button[text()=\"Login\"]'",
+				"examples":    []string{"#submit-button", ".btn-primary", "button[type='submit']", "input[value='Submit']", "//button[contains(text(), 'Login')]", ".modal .close-btn"},
 			},
 			"page_id": map[string]interface{}{
 				"type":        "string",
-				"description": "Page ID to click on (optional, uses current page if not specified)",
+				"description": "Page ID to click on (optional, uses current active page if not specified). Get page IDs from switch_tab list action",
 			},
 			"timeout": map[string]interface{}{
 				"type":        "integer",
-				"description": "Timeout in seconds to wait for element (default: 10)",
+				"description": "Maximum seconds to wait for element to become clickable. Use 2-5s for static elements, 5-10s for dynamic content, 10-30s for heavy AJAX (default: 10)",
 				"default":     10,
+				"minimum":     1,
+				"maximum":     60,
+				"examples":    []interface{}{5, 10, 15, 30},
 			},
 		},
 		Required: []string{"selector"},
@@ -1831,7 +1850,11 @@ func (t *ClickElementTool) Execute(args map[string]interface{}) (*types.CallTool
 	
 	selector, ok := args["selector"].(string)
 	if !ok {
-		return nil, fmt.Errorf("selector must be a string")
+		return nil, fmt.Errorf("selector parameter must be a string")
+	}
+	
+	if err := ValidateSelector(selector, t.Name()); err != nil {
+		return nil, err
 	}
 
 	pageID := ""
@@ -1921,20 +1944,23 @@ func (t *TypeTextTool) InputSchema() types.ToolSchema {
 		Properties: map[string]interface{}{
 			"selector": map[string]interface{}{
 				"type":        "string",
-				"description": "CSS selector for the input element",
+				"description": "CSS selector for the input element (input, textarea, contenteditable). Examples: 'input[name=\"email\"]', '#password', '.search-box', 'textarea[placeholder=\"Message\"]'",
+				"examples":    []string{"input[name='email']", "#username", ".search-input", "textarea[placeholder='Message']", "input[type='password']"},
 			},
 			"text": map[string]interface{}{
 				"type":        "string",
-				"description": "Text to type into the element",
+				"description": "Text content to type into the element. Can include newlines (\\n) for textareas and special characters. Examples: 'user@example.com', 'Hello\\nWorld', '123-456-7890'",
+				"examples":    []string{"user@example.com", "Hello World", "123-456-7890", "Multi-line\\ntext content", "Special chars: !@#$%"},
 			},
 			"page_id": map[string]interface{}{
 				"type":        "string",
-				"description": "Page ID (optional)",
+				"description": "Page ID to type in (optional, uses current active page if not specified). Get page IDs from switch_tab list action",
 			},
 			"clear": map[string]interface{}{
 				"type":        "boolean",
-				"description": "Clear the field before typing (default: true)",
+				"description": "Clear existing content before typing. Set to false to append text (default: true)",
 				"default":     true,
+				"examples":    []interface{}{true, false},
 			},
 		},
 		Required: []string{"selector", "text"},
@@ -1946,12 +1972,20 @@ func (t *TypeTextTool) Execute(args map[string]interface{}) (*types.CallToolResp
 	
 	selector, ok := args["selector"].(string)
 	if !ok {
-		return nil, fmt.Errorf("selector must be a string")
+		return nil, fmt.Errorf("selector parameter must be a string")
+	}
+	
+	if err := ValidateSelector(selector, t.Name()); err != nil {
+		return nil, err
 	}
 
 	text, ok := args["text"].(string)
 	if !ok {
-		return nil, fmt.Errorf("text must be a string")
+		return nil, fmt.Errorf("text parameter must be a string")
+	}
+	
+	if err := ValidateText(text, t.Name(), false); err != nil {
+		return nil, err
 	}
 
 	pageID := ""

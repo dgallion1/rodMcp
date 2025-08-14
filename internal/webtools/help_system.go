@@ -17,12 +17,15 @@ const (
 
 // UsageHint provides contextual information about tool usage
 type UsageHint struct {
-	Tool        string
-	Category    ToolCategory
-	Description string
-	Example     string
-	CommonUse   []string
-	WorksWith   []string
+	Tool         string
+	Category     ToolCategory
+	Description  string
+	Example      string
+	CommonUse    []string
+	WorksWith    []string
+	Complexity   string   // "basic", "intermediate", "advanced"
+	Prerequisites []string // Tools that should be learned first
+	LearningTips []string // Tips for LLM usage
 }
 
 // HelpSystem provides enhanced tool discoverability
@@ -51,6 +54,14 @@ func (h *HelpSystem) initializeHints() {
 			"Generate test pages for automated testing",
 		},
 		WorksWith: []string{"navigate_page", "take_screenshot", "live_preview", "execute_script"},
+		Complexity: "basic",
+		Prerequisites: []string{},
+		LearningTips: []string{
+			"Start with simple HTML structure, then add CSS styling",
+			"Use semantic HTML5 elements for better accessibility",
+			"Test responsive design with different viewport sizes",
+			"Combine with live_preview for instant feedback",
+		},
 	}
 	
 	h.hints["navigate_page"] = UsageHint{
@@ -65,6 +76,14 @@ func (h *HelpSystem) initializeHints() {
 			"Switch between different pages in your application",
 		},
 		WorksWith: []string{"click_element", "type_text", "take_screenshot", "execute_script"},
+		Complexity: "basic",
+		Prerequisites: []string{},
+		LearningTips: []string{
+			"Use file:// protocol for local HTML files",
+			"Always wait for page to load before interacting with elements",
+			"Use localhost:PORT for development servers",
+			"Check if page loads successfully before proceeding",
+		},
 	}
 
 	h.hints["execute_script"] = UsageHint{
@@ -94,6 +113,14 @@ func (h *HelpSystem) initializeHints() {
 			"Trigger dropdown menus and modal dialogs",
 		},
 		WorksWith: []string{"type_text", "wait_for_element", "get_element_text", "take_screenshot"},
+		Complexity: "basic",
+		Prerequisites: []string{"navigate_page"},
+		LearningTips: []string{
+			"Use specific selectors like #id or unique classes for reliability",
+			"Wait for elements to be visible before clicking",
+			"Use browser dev tools to test selectors first",
+			"Consider using wait_for_element before clicking dynamic elements",
+		},
 	}
 
 	h.hints["live_preview"] = UsageHint{
@@ -123,6 +150,14 @@ func (h *HelpSystem) initializeHints() {
 			"Handle multi-step form wizards efficiently",
 		},
 		WorksWith: []string{"navigate_page", "wait_for_condition", "assert_element", "take_screenshot"},
+		Complexity: "intermediate",
+		Prerequisites: []string{"navigate_page", "click_element"},
+		LearningTips: []string{
+			"Use structured data with field selectors as keys",
+			"Test individual form fields before automating the full form",
+			"Enable validation checking to catch form errors",
+			"Use wait_for_condition after submission to verify success",
+		},
 	}
 
 	h.hints["wait_for_condition"] = UsageHint{
@@ -138,6 +173,14 @@ func (h *HelpSystem) initializeHints() {
 			"Wait for dynamic content and lazy loading",
 		},
 		WorksWith: []string{"execute_script", "assert_element", "form_fill", "screen_scrape"},
+		Complexity: "advanced",
+		Prerequisites: []string{"navigate_page", "execute_script"},
+		LearningTips: []string{
+			"Write JavaScript conditions that return true/false",
+			"Use browser dev tools to test conditions first",
+			"Start with simple conditions before complex state checking",
+			"Use descriptive condition descriptions for debugging",
+		},
 	}
 
 	h.hints["assert_element"] = UsageHint{
@@ -153,6 +196,14 @@ func (h *HelpSystem) initializeHints() {
 			"Count elements and verify quantities",
 		},
 		WorksWith: []string{"form_fill", "wait_for_condition", "click_element", "navigate_page"},
+		Complexity: "intermediate",
+		Prerequisites: []string{"navigate_page", "click_element"},
+		LearningTips: []string{
+			"Start with basic assertions like 'exists' and 'visible'",
+			"Use 'contains_text' for partial text matching",
+			"Chain assertions in a logical test sequence",
+			"Use case-insensitive matching when text case varies",
+		},
 	}
 
 	h.hints["extract_table"] = UsageHint{
@@ -215,6 +266,14 @@ func (h *HelpSystem) initializeHints() {
 			"Automate workflows requiring multiple open pages",
 		},
 		WorksWith: []string{"navigate_page", "create_page", "take_screenshot", "screen_scrape"},
+		Complexity: "intermediate",
+		Prerequisites: []string{"navigate_page"},
+		LearningTips: []string{
+			"Start with 'list' action to see all available tabs",
+			"Use 'create' action with URL to open new tabs",
+			"Use directional navigation for systematic tab switching",
+			"Close tabs when done to keep workspace organized",
+		},
 	}
 
 	// Add more hints for other tools...
@@ -289,6 +348,106 @@ func (h *HelpSystem) GetWorkflowSuggestion(goals []string) string {
 	}
 	
 	return fmt.Sprintf("%s", joinStrings(suggestions, "\n"))
+}
+
+// GetLLMGuidance provides specific guidance for LLM users
+func (h *HelpSystem) GetLLMGuidance() string {
+	guidance := []string{
+		"# 🤖 LLM-Optimized Usage Patterns",
+		"",
+		"## 🎯 **Basic Tool Progression**",
+		"**Start Here (🟢 Basic):**",
+		"1. **create_page** → Build HTML pages for testing",
+		"2. **navigate_page** → Load pages in browser", 
+		"3. **take_screenshot** → Visual confirmation",
+		"4. **click_element** → Basic interactions",
+		"5. **type_text** → Form field input",
+		"",
+		"## 🔧 **Intermediate Workflows (🟡 Intermediate)**", 
+		"**Form Automation:**",
+		"• **form_fill** → Complete entire forms efficiently",
+		"• **assert_element** → Verify form submission success",
+		"• **switch_tab** → Multi-tab form comparisons",
+		"",
+		"**Testing & Validation:**",
+		"• **assert_element** → Comprehensive UI testing",
+		"• **take_element_screenshot** → Document test results",
+		"• **extract_table** → Data validation workflows",
+		"",
+		"## ⚡ **Advanced Automation (🔴 Advanced)**",
+		"**Dynamic Content Handling:**",
+		"• **wait_for_condition** → Handle SPAs and AJAX",
+		"• **screen_scrape** → Complex data extraction",
+		"• **execute_script** → Custom JavaScript logic",
+		"",
+		"## 💡 **LLM Best Practices**",
+		"",
+		"### ✅ **Error Prevention Patterns**",
+		"```",
+		"❌ Avoid: Clicking elements immediately after navigation",
+		"✅ Better: navigate_page → wait_for_element → click_element",
+		"",
+		"❌ Avoid: Complex selectors without testing",
+		"✅ Better: Start with simple selectors (#id, .class)",
+		"",
+		"❌ Avoid: Hardcoded timeouts",
+		"✅ Better: Use wait_for_condition for dynamic content",
+		"```",
+		"",
+		"### 🎯 **Selector Strategy**",
+		"**Reliability Priority:**",
+		"1. **#id** (most reliable) - unique identifiers",
+		"2. **[name='field']** (forms) - stable form field names", 
+		"3. **.unique-class** (styling) - specific CSS classes",
+		"4. **tag[attribute]** (semantic) - HTML5 semantic elements",
+		"5. **//text()** (XPath) - when content is stable",
+		"",
+		"### 🔄 **Progressive Complexity**",
+		"**Start Simple, Build Up:**",
+		"```",
+		"Level 1: navigate_page + take_screenshot (validation)",
+		"Level 2: + click_element + type_text (basic interaction)", 
+		"Level 3: + wait_for_element + assert_element (robust testing)",
+		"Level 4: + form_fill + wait_for_condition (complex workflows)",
+		"Level 5: + screen_scrape + execute_script (advanced automation)",
+		"```",
+		"",
+		"### 🎬 **Debugging Workflow**",
+		"**When Things Go Wrong:**",
+		"1. **take_screenshot** → See current page state",
+		"2. **execute_script: 'document.querySelector(\"selector\")'** → Test selector",
+		"3. **wait_for_element** → Ensure element exists", 
+		"4. **assert_element: 'exists'** → Verify element presence",
+		"5. **take_element_screenshot** → Focus on problematic element",
+		"",
+		"### ⚠️ **Common LLM Pitfalls**",
+		"",
+		"**❌ Don't Do This:**",
+		"• Clicking invisible or disabled elements",
+		"• Using fragile selectors (nth-child without context)",
+		"• Skipping page load verification",
+		"• Hardcoding delays instead of waiting for conditions",
+		"• Ignoring error messages from tools",
+		"",
+		"**✅ Do This Instead:**",
+		"• Verify elements are visible/enabled before interaction",
+		"• Use semantic selectors with business meaning",
+		"• Always verify page navigation succeeded",
+		"• Use wait_for_condition for dynamic states",
+		"• Read error messages - they contain helpful examples",
+		"",
+		"## 🚀 **Pro Tips for LLMs**",
+		"",
+		"1. **Parameter Examples**: Every parameter description includes examples - use them!",
+		"2. **Error Context**: Error messages provide specific examples and suggestions",
+		"3. **Tool Complexity**: 🟢 Basic → 🟡 Intermediate → 🔴 Advanced progression",
+		"4. **Prerequisites**: Check tool prerequisites before attempting complex workflows",
+		"5. **Learning Tips**: Each tool has specific LLM learning tips",
+		"",
+		"**Use `help [tool_name]` for detailed guidance on any tool!**",
+	}
+	
+	return fmt.Sprintf("%s", joinStrings(guidance, "\n"))
 }
 
 func joinStrings(strs []string, sep string) string {

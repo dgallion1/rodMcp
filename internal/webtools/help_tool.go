@@ -35,7 +35,8 @@ func (t *HelpTool) InputSchema() types.ToolSchema {
 		Properties: map[string]interface{}{
 			"topic": map[string]interface{}{
 				"type":        "string", 
-				"description": "Help topic: 'overview', 'workflows', 'examples', or specific tool name (e.g., 'create_page')",
+				"description": "Help topic: 'overview', 'workflows', 'examples', 'llm' (LLM usage patterns), or specific tool name (e.g., 'create_page')",
+				"examples":    []string{"overview", "workflows", "examples", "llm", "create_page", "click_element", "form_fill"},
 			},
 			"category": map[string]interface{}{
 				"type":        "string",
@@ -64,6 +65,8 @@ func (t *HelpTool) Execute(args map[string]interface{}) (*types.CallToolResponse
 		helpContent = t.getWorkflows()
 	case "examples":
 		helpContent = t.getExamples()
+	case "llm", "llm-patterns", "patterns":
+		helpContent = t.helpSystem.GetLLMGuidance()
 	default:
 		// Check if it's a specific tool
 		if hint, exists := t.helpSystem.GetHint(topic); exists {
@@ -254,7 +257,19 @@ func (t *HelpTool) getToolHelp(hint UsageHint) string {
 	var content strings.Builder
 	
 	content.WriteString(fmt.Sprintf("# 🔧 %s Help\n\n", hint.Tool))
-	content.WriteString(fmt.Sprintf("**Category:** %s\n\n", hint.Category))
+	content.WriteString(fmt.Sprintf("**Category:** %s\n", hint.Category))
+	
+	// Add complexity indicator
+	if hint.Complexity != "" {
+		complexityEmoji := map[string]string{
+			"basic":        "🟢",
+			"intermediate": "🟡", 
+			"advanced":     "🔴",
+		}
+		emoji := complexityEmoji[hint.Complexity]
+		content.WriteString(fmt.Sprintf("**Complexity:** %s %s\n\n", emoji, strings.Title(hint.Complexity)))
+	}
+	
 	content.WriteString(fmt.Sprintf("**Description:**\n%s\n\n", hint.Description))
 	
 	content.WriteString(fmt.Sprintf("**Example Use Case:**\n%s\n\n", hint.Example))
@@ -267,10 +282,26 @@ func (t *HelpTool) getToolHelp(hint UsageHint) string {
 		content.WriteString("\n")
 	}
 	
+	if len(hint.Prerequisites) > 0 {
+		content.WriteString("**Prerequisites:**\n")
+		for _, tool := range hint.Prerequisites {
+			content.WriteString(fmt.Sprintf("• %s\n", tool))
+		}
+		content.WriteString("\n")
+	}
+	
 	if len(hint.WorksWith) > 0 {
 		content.WriteString("**Works Well With:**\n")
 		for _, tool := range hint.WorksWith {
 			content.WriteString(fmt.Sprintf("• %s\n", tool))
+		}
+		content.WriteString("\n")
+	}
+	
+	if len(hint.LearningTips) > 0 {
+		content.WriteString("**💡 LLM Learning Tips:**\n")
+		for _, tip := range hint.LearningTips {
+			content.WriteString(fmt.Sprintf("• %s\n", tip))
 		}
 		content.WriteString("\n")
 	}
@@ -316,6 +347,7 @@ Available help topics:
 • **overview** - General tool overview and categories
 • **workflows** - Common development workflows  
 • **examples** - Ready-to-use code examples
+• **llm** - 🤖 LLM-optimized usage patterns and best practices
 • **[tool_name]** - Specific tool help (e.g., "create_page", "execute_script")
 
 Available categories:
@@ -324,5 +356,6 @@ Available categories:
 • **file_system** - File and directory operations
 • **network** - HTTP requests and API testing
 
+🤖 **New for LLMs:** Try 'help llm' for optimized usage patterns!
 Try: help overview to get started!`, topic)
 }
