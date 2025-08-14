@@ -118,8 +118,9 @@ func (h *HelpSystem) initializeHints() {
 		LearningTips: []string{
 			"Use specific selectors like #id or unique classes for reliability",
 			"Wait for elements to be visible before clicking",
-			"Use browser dev tools to test selectors first",
+			"Use browser dev tools to test selectors first", 
 			"Consider using wait_for_element before clicking dynamic elements",
+			"If you get 'No pages available' error, use create_page or navigate_page first",
 		},
 	}
 
@@ -275,6 +276,51 @@ func (h *HelpSystem) initializeHints() {
 			"Close tabs when done to keep workspace organized",
 		},
 	}
+	
+	// File system tools with timeout and size limit information
+	h.hints["read_file"] = UsageHint{
+		Tool:        "read_file",
+		Category:    FileSystem,
+		Description: "Read file contents with security controls and size limits. Features 30-second timeout protection and configurable size limits (10MB default).",
+		Example:     "Read configuration files, source code, or data files for analysis and processing",
+		CommonUse: []string{
+			"Read configuration files and settings",
+			"Analyze source code and documentation",
+			"Process data files and logs",
+			"Load content for web page generation",
+		},
+		WorksWith: []string{"write_file", "create_page", "http_request"},
+		Complexity: "basic",
+		Prerequisites: []string{},
+		LearningTips: []string{
+			"Respects configured file access security settings",
+			"Files larger than limit (default 10MB) will be rejected with clear message",
+			"30-second timeout prevents hanging on slow storage",
+			"Check file path permissions before reading",
+		},
+	}
+	
+	h.hints["write_file"] = UsageHint{
+		Tool:        "write_file",
+		Category:    FileSystem,
+		Description: "Write content to files with size validation and timeout protection. Includes directory creation and configurable size limits for safety.",
+		Example:     "Save generated HTML, configuration files, or processed data with automatic directory creation",
+		CommonUse: []string{
+			"Save generated HTML, CSS, and JavaScript files",
+			"Write configuration and settings files",
+			"Export processed data and reports",
+			"Create documentation and README files",
+		},
+		WorksWith: []string{"read_file", "create_page", "list_directory"},
+		Complexity: "basic",
+		Prerequisites: []string{},
+		LearningTips: []string{
+			"Content size is checked before writing (default 10MB limit)",
+			"Automatically creates parent directories if needed",
+			"30-second timeout prevents blocking on slow storage",
+			"Respects file access security configuration",
+		},
+	}
 
 	// Add more hints for other tools...
 }
@@ -394,6 +440,23 @@ func (h *HelpSystem) GetLLMGuidance() string {
 		"✅ Better: Use wait_for_condition for dynamic content",
 		"```",
 		"",
+		"### ⏰ **Timeout & Non-Blocking Design**",
+		"**🎉 Good News: RodMCP won't block your conversation!**",
+		"",
+		"• **All operations have timeouts** (30s browser ops, 30s file I/O, 10s command execution)",
+		"• **Helpful error messages** guide you to the correct next steps",
+		"• **No infinite waiting** - tools fail fast with clear explanations",
+		"• **Memory protection** - file operations respect size limits (10MB default)",
+		"",
+		"**Example Error Flow:**",
+		"```",
+		"You: Use click_element to click #button",
+		"❌ Error: No browser pages currently open. To use click_element:",
+		"   1. Create a page: use create_page to make a new HTML page, or",
+		"   2. Navigate to a URL: use navigate_page to load an existing website",
+		"   Then you can interact with elements on the page.",
+		"```",
+		"",
 		"### 🎯 **Selector Strategy**",
 		"**Reliability Priority:**",
 		"1. **#id** (most reliable) - unique identifiers",
@@ -443,6 +506,16 @@ func (h *HelpSystem) GetLLMGuidance() string {
 		"3. **Tool Complexity**: 🟢 Basic → 🟡 Intermediate → 🔴 Advanced progression",
 		"4. **Prerequisites**: Check tool prerequisites before attempting complex workflows",
 		"5. **Learning Tips**: Each tool has specific LLM learning tips",
+		"6. **Non-Blocking Design**: Tools timeout gracefully - no conversation freezing!",
+		"7. **Progressive Workflows**: Start with create_page/navigate_page before interaction tools",
+		"",
+		"### 🛡️ **Reliability Features**",
+		"",
+		"• **Automatic Timeouts**: No tool will hang your conversation indefinitely",
+		"• **Memory Limits**: File operations protect against excessive memory usage", 
+		"• **Clear Error Messages**: Each error explains exactly what to do next",
+		"• **Size Validation**: File operations check limits before processing",
+		"• **Graceful Degradation**: Tools fail fast with helpful suggestions",
 		"",
 		"**Use `help [tool_name]` for detailed guidance on any tool!**",
 	}
