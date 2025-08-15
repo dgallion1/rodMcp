@@ -45,6 +45,7 @@ type Manager struct {
 	lastHealthy    time.Time
 	restartCount   int
 	maxRestarts    int
+	lastRestart    time.Time  // Track when last restart occurred
 	
 	// Connection monitoring
 	wsConnections  map[string]bool  // Track WebSocket connections
@@ -216,13 +217,15 @@ func (m *Manager) Start(config Config) error {
 	connectCtx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 	defer cancel()
 	
-	browserWithTimeout := browser.Context(connectCtx)
-	if err := browserWithTimeout.Connect(); err != nil {
+	if err := browser.Context(connectCtx).Connect(); err != nil {
 		if connectCtx.Err() == context.DeadlineExceeded {
 			return fmt.Errorf("browser connection timed out after 30 seconds - check if browser process is responsive")
 		}
 		return fmt.Errorf("failed to connect to browser: %w", err)
 	}
+	
+	// Small delay to ensure browser is fully initialized
+	time.Sleep(100 * time.Millisecond)
 
 	m.mutex.Lock()
 	m.browser = browser
@@ -772,20 +775,30 @@ func (m *Manager) isURLReachable(targetURL string) error {
 
 // testBrowserConnection quickly tests if browser connection is healthy
 func (m *Manager) testBrowserConnection(browser *rod.Browser) error {
-	// Quick connection test with short timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
+	if browser == nil {
+		return fmt.Errorf("browser is nil")
+	}
 	
 	var err error
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
+				m.logger.WithComponent("browser").Debug("Test connection panic details",
+					zap.Any("panic", r),
+					zap.String("stack", string(debugpkg.Stack())))
 				err = fmt.Errorf("browser connection test panicked: %v", r)
 			}
 		}()
 		
 		// Try to get browser version as a quick health check
-		_, err = browser.Context(ctx).Version()
+		// Use the browser directly without creating a new context
+		version, versionErr := browser.Version()
+		if versionErr != nil {
+			err = fmt.Errorf("failed to get browser version: %w", versionErr)
+			return
+		}
+		m.logger.WithComponent("browser").Debug("Browser version retrieved successfully",
+			zap.Any("version", version))
 	}()
 	
 	return err
@@ -793,7 +806,20 @@ func (m *Manager) testBrowserConnection(browser *rod.Browser) error {
 
 // restartBrowser safely restarts the browser with improved error handling
 func (m *Manager) restartBrowser() error {
-	m.logger.WithComponent("browser").Info("Attempting to restart browser")
+	m.mutex.Lock()
+	// Check restart count to prevent infinite loops
+	if m.restartCount >= m.maxRestarts {
+		m.mutex.Unlock()
+		return fmt.Errorf("browser restart limit exceeded (%d/%d)", m.restartCount, m.maxRestarts)
+	}
+	m.restartCount++
+	currentRestartCount := m.restartCount
+	m.lastRestart = time.Now()
+	m.mutex.Unlock()
+	
+	m.logger.WithComponent("browser").Info("Attempting to restart browser",
+		zap.Int("restart_attempt", currentRestartCount),
+		zap.Int("max_restarts", m.maxRestarts))
 	
 	// Stop browser with extra safety (ignore panics)
 	func() {
@@ -805,6 +831,9 @@ func (m *Manager) restartBrowser() error {
 		m.Stop()
 	}()
 	
+	// Wait a bit before restarting to avoid rapid restart loops
+	time.Sleep(2 * time.Second)
+	
 	// Create new context
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	
@@ -813,7 +842,8 @@ func (m *Manager) restartBrowser() error {
 		return fmt.Errorf("failed to restart browser: %w", err)
 	}
 	
-	m.logger.WithComponent("browser").Info("Browser restarted successfully")
+	m.logger.WithComponent("browser").Info("Browser restarted successfully",
+		zap.Int("restart_count", currentRestartCount))
 	return nil
 }
 
@@ -824,10 +854,12 @@ func (m *Manager) CheckHealth() error {
 	m.mutex.RUnlock()
 	
 	if browser == nil {
+		// This is normal - browser may not be started yet or may have been stopped
+		// Don't treat this as an error that needs logging
 		return fmt.Errorf("browser not started")
 	}
 
-	// Try to get browser pages as a simple health check with panic recovery
+	// Try to get browser version as a simple health check with panic recovery
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	
@@ -835,17 +867,31 @@ func (m *Manager) CheckHealth() error {
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				m.logger.WithComponent("browser").Warn("Browser health check panicked",
+				// Panics during health check are expected when browser is shutting down
+				// Log at debug level to avoid noise
+				m.logger.WithComponent("browser").Debug("Browser health check recovered from panic",
 					zap.Any("panic", r))
 				err = fmt.Errorf("browser health check panicked: %v", r)
 			}
 		}()
 		
-		_, err = browser.Context(ctx).Pages()
+		// Re-check browser under lock to ensure it's still valid
+		m.mutex.RLock()
+		currentBrowser := m.browser
+		m.mutex.RUnlock()
+		
+		if currentBrowser == nil {
+			err = fmt.Errorf("browser stopped during health check")
+			return
+		}
+		
+		// Use Version() instead of Pages() as it's simpler and less likely to panic
+		_, err = currentBrowser.Context(ctx).Version()
 	}()
 	
 	if err != nil {
-		m.logger.WithComponent("browser").Warn("Browser health check failed",
+		// Only log at debug level - health check failures are handled by the circuit breaker
+		m.logger.WithComponent("browser").Debug("Browser health check failed",
 			zap.Error(err))
 		return fmt.Errorf("browser connection unhealthy: %w", err)
 	}
@@ -855,19 +901,51 @@ func (m *Manager) CheckHealth() error {
 
 // EnsureHealthy checks browser health and restarts if needed
 func (m *Manager) EnsureHealthy() error {
+	// First, check if we should reset the restart counter
+	// Reset if it's been more than 5 minutes since last restart
+	m.mutex.Lock()
+	if m.restartCount > 0 && time.Since(m.lastRestart) > 5*time.Minute {
+		m.logger.WithComponent("browser").Debug("Resetting restart counter after stable operation",
+			zap.Int("previous_count", m.restartCount))
+		m.restartCount = 0
+	}
+	m.mutex.Unlock()
+	
 	if err := m.CheckHealth(); err != nil {
-		m.logger.WithComponent("browser").Info("Browser unhealthy, attempting restart",
+		m.logger.WithComponent("browser").Info("Browser unhealthy, attempting automatic restart",
 			zap.Error(err))
 		
-		// For now, instead of trying to restart the browser (which often fails),
-		// let's just mark it as needing restart and continue
-		// This prevents cascading failures in the health monitor
-		m.logger.WithComponent("browser").Warn("Browser health check failed, but continuing to avoid cascading failures. Browser will be restarted on next tool use.",
-			zap.Error(err))
+		// Attempt to restart the browser
+		if restartErr := m.restartBrowser(); restartErr != nil {
+			m.logger.WithComponent("browser").Error("Failed to restart browser automatically",
+				zap.Error(restartErr))
+			// Return the original error combined with restart error
+			return fmt.Errorf("browser unhealthy and restart failed: %v (restart error: %w)", err, restartErr)
+		}
 		
-		// Mark browser as unhealthy but don't attempt immediate restart
-		// It will be restarted when a tool tries to use it
-		return err
+		// Wait a moment for browser to stabilize after restart
+		time.Sleep(1 * time.Second)
+		
+		// Browser restarted successfully, verify it's now healthy with retries
+		var verifyErr error
+		for i := 0; i < 3; i++ {
+			verifyErr = m.CheckHealth()
+			if verifyErr == nil {
+				m.logger.WithComponent("browser").Info("Browser restarted successfully and is now healthy",
+					zap.Int("verification_attempt", i+1))
+				return nil
+			}
+			if i < 2 {
+				m.logger.WithComponent("browser").Debug("Browser health check failed after restart, retrying",
+					zap.Int("attempt", i+1),
+					zap.Error(verifyErr))
+				time.Sleep(time.Duration(i+1) * time.Second)
+			}
+		}
+		
+		m.logger.WithComponent("browser").Error("Browser still unhealthy after restart and retries",
+			zap.Error(verifyErr))
+		return fmt.Errorf("browser still unhealthy after restart: %w", verifyErr)
 	}
 
 	return nil

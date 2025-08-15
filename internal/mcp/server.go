@@ -207,7 +207,9 @@ func (s *Server) startHealthMonitor() {
 				})
 				
 				if err != nil {
-					s.logger.WithComponent("mcp").Error("Browser health check failed",
+					// Health check failures are handled by the circuit breaker
+					// Log at debug level to avoid noise
+					s.logger.WithComponent("mcp").Debug("Browser health check failed",
 						zap.Error(err))
 				}
 			}

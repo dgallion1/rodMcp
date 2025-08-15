@@ -357,10 +357,10 @@ func main() {
 		case sig := <-sigChan:
 			switch sig {
 			case syscall.SIGPIPE:
-				// Only log SIGPIPE if it's been more than 1 second since the last one
+				// Only log SIGPIPE if it's been more than 10 seconds since the last one
 				now := time.Now()
-				if now.Sub(lastSigpipe) > time.Second {
-					log.Info("Received SIGPIPE - client disconnected, continuing operation")
+				if now.Sub(lastSigpipe) > 10*time.Second {
+					log.Debug("Client disconnected (SIGPIPE), continuing operation")
 					lastSigpipe = now
 				}
 				// Don't shut down on SIGPIPE, let connection manager handle it
