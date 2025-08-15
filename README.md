@@ -12,7 +12,8 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 - ⚡ **Zero Timeouts** - **Immediate error responses** instead of hanging operations (fixes Claude Code timeouts)
 - 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless (browser visibility fixed!)
 - 🛠️ **26 Comprehensive Tools** - Complete browser control + screen scraping + table extraction + file system + HTTP requests + interactive help
-- ⏰ **Timeout Protection** - All operations have timeouts (30s browser ops, 30s file I/O) - **no infinite waiting**
+- ⏰ **Comprehensive Timeout Protection** - All operations have timeouts (15-60s depending on complexity) - **no infinite waiting**
+- 🛡️ **Advanced Panic Recovery** - **Full stack trace logging** with graceful error handling prevents crashes from Rod library panics
 - 🛡️ **Error Guidance** - Helpful error messages guide you to correct next steps instead of cryptic failures
 - 📊 **Memory Protection** - Circular buffer management with overflow protection prevents memory exhaustion
 - 🏠 **Easy Install** - No sudo required with local user installation
@@ -593,10 +594,19 @@ Use visible browser mode so I can see each step."
 ### ⏰ **Non-Blocking Design**
 **🎉 RodMCP will never block your Claude conversation!**
 
-- **All operations have timeouts** - Browser ops (30s), file I/O (30s), commands (10s)
+- **Comprehensive timeout protection** - Browser ops (15-60s), file I/O (30s), commands (10s)
+- **Advanced panic recovery** - Full stack trace logging with graceful error handling
 - **Graceful failures** - Tools fail fast with clear explanations, not infinite hanging
 - **Memory protection** - File operations respect size limits (10MB default)
 - **Resource management** - Automatic cleanup and proper error handling
+
+### 🛡️ **Enhanced Panic Recovery System**
+**New in this release**: Comprehensive panic recovery prevents crashes
+
+- **Full stack trace logging** - Complete `runtime/debug.Stack()` traces for debugging
+- **Graceful error responses** - Rod library panics return structured errors instead of crashes
+- **Process continuity** - MCP server continues operating after panic recovery
+- **Tool execution protection** - All 26 tools wrapped with panic recovery handlers
 
 ### 🛠️ **Improved Error Messages**
 **Before vs After Examples:**
@@ -617,9 +627,12 @@ Then you can interact with elements on the page.
 | **Operation Type** | **Timeout** | **Protection Against** |
 |-------------------|-------------|----------------------|
 | Browser launch/connect | 30 seconds | Slow browser startup |
+| Page navigation | 15 seconds | Slow-loading websites |
+| Script execution | 30-60 seconds | Long-running JavaScript |
+| Element operations | 10 seconds | Missing/slow elements |
 | File read/write operations | 30 seconds | Slow storage/network filesystems |
+| HTTP requests | 30 seconds | Network timeouts |
 | Command execution | 10 seconds | Hanging system commands |
-| HTTP requests | Configurable | Network timeouts |
 
 ### 📊 **Size & Resource Limits**
 

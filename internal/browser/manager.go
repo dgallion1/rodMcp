@@ -268,8 +268,9 @@ func (m *Manager) Stop() error {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
+					stackTrace := debugpkg.Stack()
 					m.logger.WithComponent("browser").Error("Recovered from browser close panic",
-						zap.Any("panic", r))
+						zap.Any("panic", r), zap.String("stack", string(stackTrace)))
 					// Continue execution - the browser reference will be set to nil below
 				}
 			}()

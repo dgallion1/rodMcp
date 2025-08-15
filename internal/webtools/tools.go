@@ -13,6 +13,7 @@ import (
 	"rodmcp/internal/browser"
 	"rodmcp/internal/logger"
 	"rodmcp/pkg/types"
+	debugpkg "runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +33,28 @@ func createNoPagesErrorResponse(toolName string) *types.CallToolResponse {
 		}},
 		IsError: true,
 	}
+}
+
+// Helper function to execute tool operations with panic recovery
+func executeWithPanicRecovery(toolName string, logger *logger.Logger, operation func() (*types.CallToolResponse, error)) (*types.CallToolResponse, error) {
+	var result *types.CallToolResponse
+	var err error
+	
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				stackTrace := debugpkg.Stack()
+				logger.WithComponent("tools").Error("Tool execution panic",
+					zap.String("tool", toolName),
+					zap.Any("panic", r),
+					zap.String("stack", string(stackTrace)))
+				err = fmt.Errorf("tool execution panicked: %v", r)
+			}
+		}()
+		result, err = operation()
+	}()
+	
+	return result, err
 }
 
 // CreatePageTool creates HTML pages
@@ -86,11 +109,12 @@ func (t *CreatePageTool) InputSchema() types.ToolSchema {
 }
 
 func (t *CreatePageTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
-	start := time.Now()
-	defer func() {
-		duration := time.Since(start).Milliseconds()
-		t.logger.LogToolExecution(t.Name(), args, true, duration)
-	}()
+	return executeWithPanicRecovery(t.Name(), t.logger, func() (*types.CallToolResponse, error) {
+		start := time.Now()
+		defer func() {
+			duration := time.Since(start).Milliseconds()
+			t.logger.LogToolExecution(t.Name(), args, true, duration)
+		}()
 
 	filename, ok := args["filename"].(string)
 	if !ok {
@@ -157,6 +181,7 @@ func (t *CreatePageTool) Execute(args map[string]interface{}) (*types.CallToolRe
 			Text: fmt.Sprintf("Created HTML page: %s", absPath),
 		}},
 	}, nil
+	})
 }
 
 // NavigatePageTool navigates browser to a page
@@ -192,9 +217,10 @@ func (t *NavigatePageTool) InputSchema() types.ToolSchema {
 }
 
 func (t *NavigatePageTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
-	// Add total execution timeout to prevent hanging
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
+	return executeWithPanicRecovery(t.Name(), t.logger, func() (*types.CallToolResponse, error) {
+		// Add total execution timeout to prevent hanging
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
 	
 	// Use a channel to handle timeout
 	type result struct {
@@ -237,6 +263,7 @@ func (t *NavigatePageTool) Execute(args map[string]interface{}) (*types.CallTool
 			IsError: true,
 		}, nil
 	}
+	})
 }
 
 func (t *NavigatePageTool) executeNavigation(url string) (*types.CallToolResponse, error) {
@@ -366,11 +393,12 @@ func (t *ScreenshotTool) InputSchema() types.ToolSchema {
 }
 
 func (t *ScreenshotTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
-	start := time.Now()
-	defer func() {
-		duration := time.Since(start).Milliseconds()
-		t.logger.LogToolExecution(t.Name(), args, true, duration)
-	}()
+	return executeWithPanicRecovery(t.Name(), t.logger, func() (*types.CallToolResponse, error) {
+		start := time.Now()
+		defer func() {
+			duration := time.Since(start).Milliseconds()
+			t.logger.LogToolExecution(t.Name(), args, true, duration)
+		}()
 
 	pageID, ok := args["page_id"].(string)
 	if !ok || pageID == "" {
@@ -476,6 +504,7 @@ func (t *ScreenshotTool) Execute(args map[string]interface{}) (*types.CallToolRe
 			MimeType: "image/png",
 		}},
 	}, nil
+	})
 }
 
 // TakeElementScreenshotTool captures screenshots of specific elements
@@ -547,11 +576,12 @@ func (t *TakeElementScreenshotTool) InputSchema() types.ToolSchema {
 }
 
 func (t *TakeElementScreenshotTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
-	start := time.Now()
-	defer func() {
-		duration := time.Since(start).Milliseconds()
-		t.logger.LogToolExecution(t.Name(), args, true, duration)
-	}()
+	return executeWithPanicRecovery(t.Name(), t.logger, func() (*types.CallToolResponse, error) {
+		start := time.Now()
+		defer func() {
+			duration := time.Since(start).Milliseconds()
+			t.logger.LogToolExecution(t.Name(), args, true, duration)
+		}()
 
 	// Add timeout protection
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -608,6 +638,7 @@ func (t *TakeElementScreenshotTool) Execute(args map[string]interface{}) (*types
 	case result := <-resultChan:
 		return result, nil
 	}
+	})
 }
 
 func (t *TakeElementScreenshotTool) captureElementScreenshot(pageID, selector, filename string, padding int, scrollIntoView, waitForElement bool, timeout int) (*types.CallToolResponse, error) {
@@ -1197,9 +1228,10 @@ func (t *ExecuteScriptTool) InputSchema() types.ToolSchema {
 }
 
 func (t *ExecuteScriptTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
-	// Add total execution timeout to prevent hanging
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	return executeWithPanicRecovery(t.Name(), t.logger, func() (*types.CallToolResponse, error) {
+		// Add total execution timeout to prevent hanging
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 	
 	// Use a channel to handle timeout
 	type result struct {
@@ -1265,6 +1297,7 @@ func (t *ExecuteScriptTool) Execute(args map[string]interface{}) (*types.CallToo
 			IsError: true,
 		}, nil
 	}
+	})
 }
 
 // BrowserVisibilityTool controls browser visibility at runtime
@@ -2079,7 +2112,8 @@ func (t *ClickElementTool) InputSchema() types.ToolSchema {
 }
 
 func (t *ClickElementTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
-	start := time.Now()
+	return executeWithPanicRecovery(t.Name(), t.logger, func() (*types.CallToolResponse, error) {
+		start := time.Now()
 	
 	selector, ok := args["selector"].(string)
 	if !ok {
@@ -2145,6 +2179,7 @@ func (t *ClickElementTool) Execute(args map[string]interface{}) (*types.CallTool
 			},
 		}},
 	}, nil
+	})
 }
 
 // TypeTextTool types text into input elements
