@@ -127,7 +127,8 @@ func (m *Manager) Start(config Config) error {
 		if err != nil {
 			errChan <- err
 		} else {
-			// Store control URL and try to extract PID
+			// Store launcher and control URL, try to extract PID
+			m.launcher = l
 			m.controlURL = url
 			if pid := m.extractBrowserPID(url); pid > 0 {
 				m.browserPID = pid
@@ -184,6 +185,9 @@ func (m *Manager) Start(config Config) error {
 				if err != nil {
 					errChan2 <- err
 				} else {
+					// Store launcher for fallback case too
+					m.launcher = l
+					m.controlURL = url
 					urlChan2 <- url
 				}
 			}()
@@ -208,25 +212,61 @@ func (m *Manager) Start(config Config) error {
 		}
 	}
 
-	// Connect to browser with timeout
-	browser := rod.New().ControlURL(url).Context(m.ctx)
+	// Connect to browser
+	// Important: Create browser and connect in the right order
+	browser := rod.New().ControlURL(url)
 	if config.SlowMotion > 0 {
 		browser = browser.SlowMotion(config.SlowMotion)
 	}
 
-	// Add connection timeout context
-	connectCtx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
-	defer cancel()
+	// Connect to browser - use a goroutine with timeout for connection
+	connectErr := make(chan error, 1)
+	connectDone := make(chan *rod.Browser, 1)
 	
-	if err := browser.Context(connectCtx).Connect(); err != nil {
-		if connectCtx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("browser connection timed out after 30 seconds - check if browser process is responsive")
-		}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				connectErr <- fmt.Errorf("browser connection panicked: %v", r)
+			}
+		}()
+		
+		// MustConnect properly initializes the client
+		connected := browser.MustConnect()
+		connectDone <- connected
+	}()
+	
+	// Wait for connection with timeout
+	select {
+	case browser = <-connectDone:
+		// Connected successfully
+	case err := <-connectErr:
 		return fmt.Errorf("failed to connect to browser: %w", err)
+	case <-time.After(30 * time.Second):
+		return fmt.Errorf("browser connection timed out after 30 seconds - check if browser process is responsive")
 	}
 	
 	// Small delay to ensure browser is fully initialized
 	time.Sleep(100 * time.Millisecond)
+	
+	// Verify browser connection is actually working
+	// This helps catch cases where Connect() succeeds but the browser isn't actually responsive
+	testCtx, testCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer testCancel()
+	
+	// Wrap in panic recovery since rod can panic on broken connections
+	var verifyErr error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				verifyErr = fmt.Errorf("browser connection verification panicked: %v", r)
+			}
+		}()
+		_, verifyErr = browser.Context(testCtx).Version()
+	}()
+	
+	if verifyErr != nil {
+		return fmt.Errorf("browser connected but not responsive: %w", verifyErr)
+	}
 
 	m.mutex.Lock()
 	m.browser = browser
@@ -246,13 +286,13 @@ func (m *Manager) Stop() error {
 	m.logger.LogBrowserAction("stopping", "", 0)
 	start := time.Now()
 
-	// Stop health monitoring first
+	// Stop health monitoring first with proper locking
+	m.mutex.Lock()
 	if m.healthTicker != nil {
 		m.healthTicker.Stop()
 		m.healthTicker = nil
 	}
-
-	m.mutex.Lock()
+	// Keep the lock for the rest of the function
 	defer m.mutex.Unlock()
 
 	// Close all pages safely
@@ -416,7 +456,11 @@ func (m *Manager) closePage(pageID string) error {
 		return fmt.Errorf("page not found: %s", pageID)
 	}
 
-	if err := page.Close(); err != nil {
+	// Use a separate timeout context for closing to avoid context cancellation issues
+	closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	if err := page.Context(closeCtx).Close(); err != nil {
 		return fmt.Errorf("failed to close page: %w", err)
 	}
 
@@ -560,19 +604,57 @@ func (m *Manager) GetPageInfo(pageID string) (map[string]interface{}, error) {
 		"id": pageID,
 	}
 
-	// Safely get page info without panic
-	if pageInfo, err := page.Info(); err == nil && pageInfo != nil {
-		info["url"] = pageInfo.URL
-	} else {
+	// Try multiple methods to get URL with timeouts
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	
+	// First try page.Info() with panic recovery
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.WithComponent("browser").Debug("Page info panicked", zap.Any("panic", r))
+			}
+		}()
+		if pageInfo, err := page.Context(ctx).Info(); err == nil && pageInfo != nil && pageInfo.URL != "" {
+			info["url"] = pageInfo.URL
+			return
+		}
+	}()
+	
+	// If Info() didn't work, try evaluating window.location.href
+	if _, exists := info["url"]; !exists {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					m.logger.WithComponent("browser").Debug("URL eval panicked", zap.Any("panic", r))
+				}
+			}()
+			if urlResult, err := page.Context(ctx).Eval("() => window.location.href"); err == nil {
+				if urlStr := urlResult.Value.String(); urlStr != "" {
+					info["url"] = urlStr
+				}
+			}
+		}()
+	}
+	
+	// Default to empty string if no URL found
+	if _, exists := info["url"]; !exists {
 		info["url"] = ""
 	}
 
-	title, err := page.Element("title")
-	if err == nil {
-		if titleText, err := title.Text(); err == nil {
-			info["title"] = titleText
+	// Get title safely with panic recovery
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.WithComponent("browser").Debug("Title extraction panicked", zap.Any("panic", r))
+			}
+		}()
+		if title, err := page.Context(ctx).Element("title"); err == nil {
+			if titleText, err := title.Text(); err == nil {
+				info["title"] = titleText
+			}
 		}
-	}
+	}()
 
 	return info, nil
 }
@@ -744,6 +826,17 @@ func (m *Manager) isURLReachable(targetURL string) error {
 		return fmt.Errorf("invalid URL format: %w", err)
 	}
 	
+	// Check for valid schemes
+	validSchemes := map[string]bool{
+		"http":  true,
+		"https": true,
+		"file":  true,
+	}
+	
+	if !validSchemes[parsedURL.Scheme] {
+		return fmt.Errorf("unsupported URL scheme: %s", parsedURL.Scheme)
+	}
+	
 	// For http/https URLs, do a quick connectivity check
 	if parsedURL.Scheme == "http" || parsedURL.Scheme == "https" {
 		client := &http.Client{
@@ -867,6 +960,15 @@ func (m *Manager) restartBrowser() error {
 
 // CheckHealth verifies the browser connection is still active
 func (m *Manager) CheckHealth() error {
+	// Get browser reference under lock
+	m.mutex.RLock()
+	browser := m.browser
+	m.mutex.RUnlock()
+	
+	if browser == nil {
+		return fmt.Errorf("browser not started")
+	}
+	
 	// Try to get browser version as a simple health check with panic recovery
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -883,19 +985,9 @@ func (m *Manager) CheckHealth() error {
 			}
 		}()
 		
-		// Get browser reference under lock and check immediately
-		// This prevents using stale browser references
-		m.mutex.RLock()
-		browser := m.browser
-		m.mutex.RUnlock()
-		
-		if browser == nil {
-			err = fmt.Errorf("browser not started")
-			return
-		}
-		
-		// Use Version() instead of Pages() as it's simpler and less likely to panic
-		// The browser reference is only valid at this moment, so use it immediately
+		// Try to get version - this validates the connection
+		// Everything inside this function can panic if browser is closing/closed
+		// That's why we need the panic recovery
 		_, err = browser.Context(ctx).Version()
 	}()
 	
@@ -1078,11 +1170,14 @@ func (m *Manager) extractBrowserPID(controlURL string) int {
 
 // startHealthMonitoring starts periodic health checks of the browser process
 func (m *Manager) startHealthMonitoring() {
+	// Stop existing ticker with proper locking
+	m.mutex.Lock()
 	if m.healthTicker != nil {
 		m.healthTicker.Stop()
 	}
-	
 	m.healthTicker = time.NewTicker(10 * time.Second)
+	ticker := m.healthTicker // Local copy for goroutine
+	m.mutex.Unlock()
 	
 	go func() {
 		defer func() {
@@ -1096,7 +1191,7 @@ func (m *Manager) startHealthMonitoring() {
 			select {
 			case <-m.ctx.Done():
 				return
-			case <-m.healthTicker.C:
+			case <-ticker.C:
 				m.performHealthCheck()
 			}
 		}

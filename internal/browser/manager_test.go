@@ -564,9 +564,12 @@ func TestNewPageWithHTTP(t *testing.T) {
 		t.Errorf("GetPageInfo failed: %v", err)
 	}
 	
-	// Verify URL matches
-	if info["url"] != server.URL {
-		t.Errorf("Expected URL %s, got %v", server.URL, info["url"])
+	// Verify URL matches (allow for trailing slash normalization)
+	actualURL, ok := info["url"].(string)
+	if !ok {
+		t.Errorf("URL should be a string, got %T", info["url"])
+	} else if actualURL != server.URL && actualURL != server.URL+"/" {
+		t.Errorf("Expected URL %s or %s/, got %s", server.URL, server.URL, actualURL)
 	}
 }
 

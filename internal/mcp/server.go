@@ -137,10 +137,9 @@ func (s *Server) startMessageLoop() error {
 			line, err := s.connectionMgr.ReadMessage()
 			if err != nil {
 				if err == io.EOF {
-					s.logger.WithComponent("mcp").Debug("Input stream closed gracefully")
-					// For EOF, wait briefly and continue - this is normal for MCP
-					time.Sleep(100 * time.Millisecond)
-					continue
+					s.logger.WithComponent("mcp").Info("Input stream closed (EOF) - shutting down server")
+					// EOF means the client has disconnected, so we should exit gracefully
+					return nil
 				}
 				
 				// Check for "not connected" errors - pause processing

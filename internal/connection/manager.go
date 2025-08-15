@@ -268,10 +268,10 @@ func (cm *ConnectionManager) ReadMessage() (string, error) {
 					errorCh <- fmt.Errorf("scanner error (recoverable): %w", err)
 				}
 			} else {
-				// EOF - this is normal for MCP stdio, don't treat as connection loss
-				cm.logger.WithComponent("connection").Debug("EOF received from stdin - normal for MCP, waiting for next message")
-				// Return EOF but mark as recoverable - MCP clients send messages intermittently
-				errorCh <- fmt.Errorf("EOF (recoverable)")
+				// EOF - scanner returns false with no error when EOF is reached
+				cm.logger.WithComponent("connection").Debug("EOF received from stdin")
+				// Return io.EOF so the server can handle it properly
+				errorCh <- io.EOF
 			}
 		}
 	}()
