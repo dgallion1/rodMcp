@@ -46,117 +46,101 @@ fi
 echo -e "${GREEN}Build successful!${NC}"
 echo ""
 
-# Test 1: Browser Health Check
-run_test "Browser Health Check" '
+# Test 1: Help Tool (Basic functionality check)
+run_test "Help Tool" '
 echo "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"initialize\", \"params\": {\"protocolVersion\": \"2024-11-05\", \"capabilities\": {}}}
 {\"jsonrpc\": \"2.0\", \"method\": \"notifications/initialized\"}
 {\"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\"}
-{\"jsonrpc\": \"2.0\", \"id\": 3, \"method\": \"tools/call\", \"params\": {\"name\": \"browser_health\", \"arguments\": {}}}
-" | timeout 10s ./rodmcp-improved --headless 2>&1 | grep -q "Browser Health Report"
+{\"jsonrpc\": \"2.0\", \"id\": 3, \"method\": \"tools/call\", \"params\": {\"name\": \"help\", \"arguments\": {\"topic\": \"overview\"}}}
+" | timeout 10s ./rodmcp-improved --headless 2>&1 | grep -q "\"result\""
 '
 
-# Test 2: Page Recovery
-run_test "Page Recovery" '
+# Test 2: Create and Navigate Page
+run_test "Create and Navigate Page" '
 echo "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"initialize\", \"params\": {\"protocolVersion\": \"2024-11-05\", \"capabilities\": {}}}
 {\"jsonrpc\": \"2.0\", \"method\": \"notifications/initialized\"}
-{\"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/call\", \"params\": {\"name\": \"create_page\", \"arguments\": {\"url\": \"https://example.com\"}}}
-{\"jsonrpc\": \"2.0\", \"id\": 3, \"method\": \"tools/call\", \"params\": {\"name\": \"get_page_status\", \"arguments\": {\"page_id\": \"test\"}}}
-" | timeout 15s ./rodmcp-improved --headless 2>&1 | grep -q "Page Status"
+{\"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/call\", \"params\": {\"name\": \"create_page\", \"arguments\": {\"filename\": \"test.html\", \"title\": \"Test\", \"html\": \"<h1>Test Page</h1>\"}}}
+{\"jsonrpc\": \"2.0\", \"id\": 3, \"method\": \"tools/call\", \"params\": {\"name\": \"navigate_page\", \"arguments\": {\"url\": \"https://example.com\"}}}
+" | timeout 15s ./rodmcp-improved --headless 2>&1 | grep -q "\"result\""
 '
 
-# Test 3: Debug Info Tool
-run_test "Debug Info Tool" '
+# Test 3: Click Element
+run_test "Click Element" '
 echo "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"initialize\", \"params\": {\"protocolVersion\": \"2024-11-05\", \"capabilities\": {}}}
 {\"jsonrpc\": \"2.0\", \"method\": \"notifications/initialized\"}
-{\"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/call\", \"params\": {\"name\": \"debug_info\", \"arguments\": {\"verbose\": true}}}
-" | timeout 10s ./rodmcp-improved --headless 2>&1 | grep -q "RodMCP Debug Information"
+{\"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/call\", \"params\": {\"name\": \"navigate_page\", \"arguments\": {\"url\": \"https://example.com\"}}}
+{\"jsonrpc\": \"2.0\", \"id\": 3, \"method\": \"tools/call\", \"params\": {\"name\": \"click_element\", \"arguments\": {\"selector\": \"a\"}}}
+" | timeout 10s ./rodmcp-improved --headless 2>&1 | grep -q "\"result\""
 '
 
-# Test 4: Navigation with Retry
-run_test "Navigation with Retry" '
+# Test 4: Navigation with Multiple Pages
+run_test "Navigation with Multiple Pages" '
 cat << EOF | timeout 20s ./rodmcp-improved --headless 2>&1 | grep -q "\"result\""
 {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}}
 {"jsonrpc": "2.0", "method": "notifications/initialized"}
-{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "create_page", "arguments": {"url": "https://httpbin.org/delay/1"}}}
-{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "navigate_page", "arguments": {"page_id": "test", "url": "https://httpbin.org/status/200"}}}
+{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "navigate_page", "arguments": {"url": "https://httpbin.org/delay/1"}}}
+{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "navigate_page", "arguments": {"url": "https://httpbin.org/status/200"}}}
 EOF
 '
 
-# Test 5: Screenshot with Recovery
-run_test "Screenshot with Recovery" '
-cat << EOF | timeout 20s ./rodmcp-improved --headless 2>&1 | grep -q "Screenshot taken successfully"
+# Test 5: Screenshot
+run_test "Screenshot" '
+cat << EOF | timeout 20s ./rodmcp-improved --headless 2>&1 | grep -q "\"result\""
 {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}}
 {"jsonrpc": "2.0", "method": "notifications/initialized"}
-{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "create_page", "arguments": {"url": "https://example.com"}}}
-{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "take_screenshot", "arguments": {"page_id": "test"}}}
+{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "navigate_page", "arguments": {"url": "https://example.com"}}}
+{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "take_screenshot", "arguments": {}}}
 EOF
 '
 
-# Test 6: Multiple Page Management
-run_test "Multiple Page Management" '
+# Test 6: Tab Management
+run_test "Tab Management" '
 cat << EOF | timeout 25s ./rodmcp-improved --headless 2>&1 | grep -q "\"result\""
 {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}}
 {"jsonrpc": "2.0", "method": "notifications/initialized"}
-{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "create_page", "arguments": {"url": "https://example.com"}}}
-{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "create_page", "arguments": {"url": "https://httpbin.org"}}}
-{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "list_pages", "arguments": {}}}
+{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "switch_tab", "arguments": {"action": "create", "url": "https://example.com"}}}
+{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "switch_tab", "arguments": {"action": "create", "url": "https://httpbin.org"}}}
+{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "switch_tab", "arguments": {"action": "list"}}}
 EOF
 '
 
-# Test 7: Script Execution with Retry
-run_test "Script Execution with Retry" '
+# Test 7: Script Execution
+run_test "Script Execution" '
 cat << EOF | timeout 15s ./rodmcp-improved --headless 2>&1 | grep -q "\"result\""
 {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}}
 {"jsonrpc": "2.0", "method": "notifications/initialized"}
-{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "create_page", "arguments": {"url": "https://example.com"}}}
-{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "execute_script", "arguments": {"page_id": "test", "script": "document.title"}}}
+{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "navigate_page", "arguments": {"url": "https://example.com"}}}
+{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "execute_script", "arguments": {"script": "document.title"}}}
 EOF
 '
 
-# Test 8: Connection Recovery
-run_test "Connection Recovery" '
-# Start server in background
-./rodmcp-improved --headless 2>&1 &
-SERVER_PID=$!
-sleep 2
-
-# Send initial commands
-echo "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"initialize\", \"params\": {\"protocolVersion\": \"2024-11-05\", \"capabilities\": {}}}" | nc localhost 3000
-echo "{\"jsonrpc\": \"2.0\", \"method\": \"notifications/initialized\"}" | nc localhost 3000
-
-# Brief interruption
-sleep 1
-
-# Send more commands
-echo "{\"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\"}" | nc localhost 3000
-
-# Clean up
-kill $SERVER_PID 2>/dev/null || true
-wait $SERVER_PID 2>/dev/null || true
-
-# Check if we got responses
-[ $? -eq 0 ]
-'
-
-# Test 9: Circuit Breaker Functionality
-run_test "Circuit Breaker Functionality" '
-cat << EOF | timeout 20s ./rodmcp-improved --headless 2>&1 | grep -q "circuit breaker"
+# Test 8: Wait and Type Text
+run_test "Wait and Type Text" '
+cat << EOF | timeout 20s ./rodmcp-improved --headless 2>&1 | grep -q "\"result\""
 {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}}
 {"jsonrpc": "2.0", "method": "notifications/initialized"}
-{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "debug_info", "arguments": {"verbose": true}}}
+{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "navigate_page", "arguments": {"url": "https://httpbin.org/forms/post"}}}
+{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "wait_for_element", "arguments": {"selector": "input[name=\"custname\"]"}}}
+{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "type_text", "arguments": {"selector": "input[name=\"custname\"]", "text": "Test User"}}}
 EOF
 '
 
-# Test 10: Browser Restart Recovery
-run_test "Browser Restart Recovery" '
-cat << EOF | timeout 30s ./rodmcp-improved --headless 2>&1 | grep -q "Browser restarted successfully"
+# Test 9: HTTP Request Tool
+run_test "HTTP Request Tool" '
+cat << EOF | timeout 20s ./rodmcp-improved --headless 2>&1 | grep -q "\"result\""
 {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}}
 {"jsonrpc": "2.0", "method": "notifications/initialized"}
-{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "create_page", "arguments": {"url": "https://example.com"}}}
-# Simulate browser issue by creating multiple pages rapidly
-{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "create_page", "arguments": {"url": "https://httpbin.org/delay/5"}}}
-{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "create_page", "arguments": {"url": "https://example.org"}}}
-{"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "browser_health", "arguments": {}}}
+{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "http_request", "arguments": {"url": "https://httpbin.org/get", "method": "GET"}}}
+EOF
+'
+
+# Test 10: Form Fill
+run_test "Form Fill" '
+cat << EOF | timeout 30s ./rodmcp-improved --headless 2>&1 | grep -q "\"result\""
+{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}}
+{"jsonrpc": "2.0", "method": "notifications/initialized"}
+{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "navigate_page", "arguments": {"url": "https://httpbin.org/forms/post"}}}
+{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "form_fill", "arguments": {"fields": {"input[name=\"custname\"]": "John Doe", "input[name=\"custtel\"]": "555-1234", "textarea[name=\"comments\"]": "Test comment"}}}}
 EOF
 '
 

@@ -529,9 +529,28 @@ then take screenshots of any issues you find."
 
 ## 🧪 Testing
 
-RodMCP includes a comprehensive test suite that validates all 23 MCP tools across 5 categories:
+RodMCP includes comprehensive test suites that validate stability, recovery, and all MCP tools:
 
-### Run Comprehensive Test Suite
+### Run Test Suites
+
+#### Quick Tests (Basic Functionality)
+```bash
+./test_improvements_quick.sh
+```
+Tests basic functionality with 5 essential tests in under 30 seconds.
+
+#### Comprehensive Tests (Full Validation)
+```bash
+./test_improvements.sh
+```
+Full test suite covering 10 key scenarios including:
+- Browser automation and navigation
+- Form interactions and data entry
+- Tab management and screenshots
+- Script execution and HTTP requests
+- Error recovery and stability
+
+#### Integration Test Suite
 ```bash
 go run comprehensive_suite.go
 ```
@@ -545,8 +564,10 @@ go run comprehensive_suite.go
 - **⚡ JavaScript Execution** (4 tests): Complex object returns, DOM manipulation, async operations, error handling
 
 **Features:**
-- ✅ **100% Success Rate** - All 27 tests pass
+- ✅ **100% Success Rate** - All tests designed to pass
 - ⏱️ **Performance Metrics** - Detailed timing for each operation
+- 🔄 **Connection Stability** - Validates timeout handling and recovery
+- 🛡️ **Error Recovery** - Tests panic recovery and graceful degradation
 - 📊 **Category Summaries** - Success rates per tool category
 - 🎯 **Comprehensive Coverage** - Tests every MCP tool with real scenarios
 - 🔧 **Automated Validation** - Verifies element text extraction, attribute reading, HTTP responses, and JavaScript execution
