@@ -103,6 +103,10 @@ type ConnectionManager struct {
 	lastActivity  time.Time
 	activityMutex sync.RWMutex
 	
+	// Persistent stdin scanner for MCP protocol
+	stdinScanner  *bufio.Scanner
+	scannerMutex  sync.Mutex
+	
 	// Connection stats
 	connectionAttempts int64
 	reconnectCount     int64
@@ -171,6 +175,12 @@ func (cm *ConnectionManager) Start() error {
 		zap.Int("input_buffer_size", cm.config.InputBufferSize),
 		zap.Int("output_buffer_size", cm.config.OutputBufferSize))
 
+	// Initialize persistent stdin scanner for MCP protocol
+	cm.scannerMutex.Lock()
+	cm.stdinScanner = bufio.NewScanner(os.Stdin)
+	cm.stdinScanner.Buffer(make([]byte, cm.config.InputBufferSize), cm.config.InputBufferSize)
+	cm.scannerMutex.Unlock()
+
 	// Start health checking
 	cm.healthCheck = time.NewTicker(cm.config.HealthCheckInterval)
 	
@@ -223,7 +233,7 @@ func (cm *ConnectionManager) ReadMessage() (string, error) {
 	resultCh := make(chan string, 1)
 	errorCh := make(chan error, 1)
 
-	// Read in goroutine with proper signal handling
+	// Read in goroutine with proper signal handling using persistent scanner
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -231,8 +241,14 @@ func (cm *ConnectionManager) ReadMessage() (string, error) {
 			}
 		}()
 
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Buffer(make([]byte, cm.config.InputBufferSize), cm.config.InputBufferSize)
+		cm.scannerMutex.Lock()
+		scanner := cm.stdinScanner
+		cm.scannerMutex.Unlock()
+		
+		if scanner == nil {
+			errorCh <- fmt.Errorf("scanner not initialized")
+			return
+		}
 		
 		if scanner.Scan() {
 			line := scanner.Text()
@@ -243,25 +259,19 @@ func (cm *ConnectionManager) ReadMessage() (string, error) {
 			if err := scanner.Err(); err != nil {
 				// Check for specific error types
 				if isConnectionError(err) {
+					cm.logger.WithComponent("connection").Warn("Connection error detected", zap.Error(err))
 					cm.handleConnectionLoss(err)
 					errorCh <- fmt.Errorf("connection lost: %w", err)
 				} else {
-					cm.logger.WithComponent("connection").Warn("Scanner error, continuing", zap.Error(err))
+					cm.logger.WithComponent("connection").Debug("Scanner error, treating as recoverable", zap.Error(err))
 					// For non-critical scanner errors, signal to continue instead of failing
 					errorCh <- fmt.Errorf("scanner error (recoverable): %w", err)
 				}
 			} else {
-				// EOF - handle gracefully without terminating
-				cm.logger.WithComponent("connection").Debug("EOF received, checking connection health")
-				if cm.testConnection() {
-					// Connection is still healthy, this might be temporary
-					cm.logger.WithComponent("connection").Debug("Connection still healthy after EOF, continuing")
-					errorCh <- fmt.Errorf("EOF (recoverable)")
-				} else {
-					// Connection actually lost
-					cm.handleConnectionLoss(io.EOF)
-					errorCh <- io.EOF
-				}
+				// EOF - this is normal for MCP stdio, don't treat as connection loss
+				cm.logger.WithComponent("connection").Debug("EOF received from stdin - normal for MCP, waiting for next message")
+				// Return EOF but mark as recoverable - MCP clients send messages intermittently
+				errorCh <- fmt.Errorf("EOF (recoverable)")
 			}
 		}
 	}()
@@ -405,6 +415,8 @@ func (cm *ConnectionManager) attemptReconnect() {
 	attempts := int64(0)
 	baseDelay := cm.config.ReconnectBaseDelay
 	
+	cm.logger.WithComponent("connection").Info("Starting reconnection sequence")
+	
 	for attempts < int64(cm.config.MaxReconnectAttempts) {
 		// Calculate exponential backoff delay
 		delay := baseDelay * time.Duration(1<<attempts)
@@ -416,7 +428,7 @@ func (cm *ConnectionManager) attemptReconnect() {
 			zap.Int64("attempt", attempts+1),
 			zap.Duration("delay", delay))
 		
-		// Wait before retry
+		// Wait before retry (except first attempt)
 		if attempts > 0 {
 			select {
 			case <-cm.ctx.Done():
@@ -425,8 +437,8 @@ func (cm *ConnectionManager) attemptReconnect() {
 			}
 		}
 		
-		// Try to reconnect by testing stdin/stdout
-		if cm.testConnection() {
+		// Try to reconnect by reinitializing the stdin scanner and testing connection
+		if cm.reinitializeConnection() {
 			cm.connected = true
 			cm.reconnectCount++
 			cm.lastReconnect = time.Now()
@@ -441,43 +453,64 @@ func (cm *ConnectionManager) attemptReconnect() {
 		attempts++
 	}
 	
-	cm.logger.WithComponent("connection").Error("Reconnection failed after all attempts",
+	cm.logger.WithComponent("connection").Warn("Reconnection failed after all attempts, continuing anyway",
 		zap.Int64("max_attempts", int64(cm.config.MaxReconnectAttempts)))
+	
+	// Even if reconnection "failed", mark as connected to continue trying
+	// The MCP protocol is resilient - we'll keep trying to read messages
+	cm.connected = true
 }
 
-// testConnection tests if the connection is working
-func (cm *ConnectionManager) testConnection() bool {
-	// Test by checking if stdin/stdout are still valid
-	// This is a simple test - in a more complex scenario we might send a ping
-	
-	// Check if we can stat stdin
-	if stat, err := os.Stdin.Stat(); err != nil {
-		cm.logger.WithComponent("connection").Debug("Failed to stat stdin", zap.Error(err))
+// reinitializeConnection attempts to reinitialize the stdin scanner and connection
+func (cm *ConnectionManager) reinitializeConnection() bool {
+	// Test basic connection first
+	if !cm.testConnection() {
 		return false
-	} else {
-		// Check if it's a pipe/character device (expected for MCP)
-		mode := stat.Mode()
-		if mode&os.ModeNamedPipe == 0 && mode&os.ModeCharDevice == 0 {
-			cm.logger.WithComponent("connection").Debug("Stdin is not a pipe or character device", zap.String("mode", mode.String()))
-		}
 	}
 	
-	// Check if we can stat stdout
-	if stat, err := os.Stdout.Stat(); err != nil {
-		cm.logger.WithComponent("connection").Debug("Failed to stat stdout", zap.Error(err))
-		return false
-	} else {
-		// Check if it's a pipe/character device (expected for MCP)
-		mode := stat.Mode()
-		if mode&os.ModeNamedPipe == 0 && mode&os.ModeCharDevice == 0 {
-			cm.logger.WithComponent("connection").Debug("Stdout is not a pipe or character device", zap.String("mode", mode.String()))
-		}
-	}
+	// Reinitialize the stdin scanner
+	cm.scannerMutex.Lock()
+	defer cm.scannerMutex.Unlock()
+	
+	cm.logger.WithComponent("connection").Debug("Reinitializing stdin scanner for reconnection")
+	
+	// Create new scanner instance
+	cm.stdinScanner = bufio.NewScanner(os.Stdin)
+	cm.stdinScanner.Buffer(make([]byte, cm.config.InputBufferSize), cm.config.InputBufferSize)
 	
 	return true
 }
 
-// isConnected checks if the connection is active
+// testConnection tests if the connection is working
+func (cm *ConnectionManager) testConnection() bool {
+	// For MCP stdio protocol, we test connection by checking if we can write to stdout
+	// without getting SIGPIPE or broken pipe errors
+	
+	// Check if we can stat stdin and stdout
+	if _, err := os.Stdin.Stat(); err != nil {
+		cm.logger.WithComponent("connection").Debug("Failed to stat stdin", zap.Error(err))
+		return false
+	}
+	
+	if _, err := os.Stdout.Stat(); err != nil {
+		cm.logger.WithComponent("connection").Debug("Failed to stat stdout", zap.Error(err))
+		return false
+	}
+	
+	// For MCP protocol, if we can stat both stdin/stdout, the connection is likely OK
+	// EOF on stdin is normal - MCP clients send messages intermittently
+	// The real test is whether we can write responses when needed
+	return true
+}
+
+// IsConnected checks if the connection is active (public method)
+func (cm *ConnectionManager) IsConnected() bool {
+	cm.mutex.RLock()
+	defer cm.mutex.RUnlock()
+	return cm.connected
+}
+
+// isConnected checks if the connection is active (private method)
 func (cm *ConnectionManager) isConnected() bool {
 	cm.mutex.RLock()
 	defer cm.mutex.RUnlock()

@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
+	"github.com/go-rod/rod/lib/proto"
 	"go.uber.org/zap"
 )
 
@@ -195,7 +196,10 @@ func (m *Manager) Start(config Config) error {
 		return fmt.Errorf("failed to connect to browser: %w", err)
 	}
 
+	m.mutex.Lock()
 	m.browser = browser
+	m.mutex.Unlock()
+	
 	duration := time.Since(start).Milliseconds()
 	m.logger.LogBrowserAction("started", url, duration)
 
@@ -209,25 +213,43 @@ func (m *Manager) Stop() error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	// Close all pages
+	// Close all pages safely
 	for id, page := range m.pages {
-		if err := page.Close(); err != nil {
-			m.logger.WithComponent("browser").Error("Failed to close page",
-				zap.String("page_id", id),
-				zap.Error(err))
+		if page != nil {
+			if err := page.Close(); err != nil {
+				m.logger.WithComponent("browser").Error("Failed to close page",
+					zap.String("page_id", id),
+					zap.Error(err))
+			}
 		}
 	}
 	m.pages = make(map[string]*rod.Page)
 
-	// Close browser
+	// Close browser safely with multiple nil checks and panic recovery
 	if m.browser != nil {
-		if err := m.browser.Close(); err != nil {
-			m.logger.WithComponent("browser").Error("Failed to close browser",
-				zap.Error(err))
-		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					m.logger.WithComponent("browser").Error("Recovered from browser close panic",
+						zap.Any("panic", r))
+					// Continue execution - the browser reference will be set to nil below
+				}
+			}()
+			
+			// Try to close the browser - any panic will be caught by the defer above
+			if err := m.browser.Close(); err != nil {
+				m.logger.WithComponent("browser").Error("Failed to close browser",
+					zap.Error(err))
+			}
+		}()
+		m.browser = nil // Ensure it's marked as nil after close attempt
 	}
 
-	m.cancel()
+	// Cancel context safely
+	if m.cancel != nil {
+		m.cancel()
+	}
+	
 	duration := time.Since(start).Milliseconds()
 	m.logger.LogBrowserAction("stopped", "", duration)
 
@@ -237,11 +259,54 @@ func (m *Manager) Stop() error {
 func (m *Manager) NewPage(url string) (*rod.Page, string, error) {
 	start := time.Now()
 
-	if m.browser == nil {
+	m.mutex.RLock()
+	browser := m.browser
+	m.mutex.RUnlock()
+	
+	if browser == nil {
 		return nil, "", fmt.Errorf("browser not started")
 	}
 
-	page := m.browser.MustPage()
+	// Test browser health before creating page
+	if err := m.testBrowserConnection(browser); err != nil {
+		m.logger.WithComponent("browser").Warn("Browser connection unhealthy, attempting restart", zap.Error(err))
+		
+		// Attempt to restart browser
+		if restartErr := m.restartBrowser(); restartErr != nil {
+			return nil, "", fmt.Errorf("browser connection unhealthy and restart failed: %w", restartErr)
+		}
+		
+		// Get the new browser reference
+		m.mutex.RLock()
+		browser = m.browser
+		m.mutex.RUnlock()
+		
+		if browser == nil {
+			return nil, "", fmt.Errorf("browser restart succeeded but browser is nil")
+		}
+	}
+
+	// Use Page() instead of MustPage() to handle connection errors gracefully
+	// Add timeout and panic recovery for Page creation
+	var page *rod.Page
+	var err error
+	
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("page creation panicked: %v", r)
+			}
+		}()
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		
+		page, err = browser.Context(ctx).Page(proto.TargetCreateTarget{})
+	}()
+	
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create new page: %w", err)
+	}
 
 	pageID := fmt.Sprintf("page_%d", time.Now().UnixNano())
 
@@ -449,8 +514,14 @@ func (m *Manager) GetPageInfo(pageID string) (map[string]interface{}, error) {
 	}
 
 	info := map[string]interface{}{
-		"id":  pageID,
-		"url": page.MustInfo().URL,
+		"id": pageID,
+	}
+
+	// Safely get page info without panic
+	if pageInfo, err := page.Info(); err == nil && pageInfo != nil {
+		info["url"] = pageInfo.URL
+	} else {
+		info["url"] = ""
 	}
 
 	title, err := page.Element("title")
@@ -467,7 +538,11 @@ func (m *Manager) SetVisibility(visible bool) error {
 	m.logger.LogBrowserAction("set_visibility", "", 0)
 	start := time.Now()
 
-	if m.browser == nil {
+	m.mutex.RLock()
+	browser := m.browser
+	m.mutex.RUnlock()
+	
+	if browser == nil {
 		return fmt.Errorf("browser not started")
 	}
 
@@ -486,7 +561,8 @@ func (m *Manager) SetVisibility(visible bool) error {
 	pageURLs := make(map[string]string)
 	m.mutex.RLock()
 	for id, page := range m.pages {
-		if pageInfo := page.MustInfo(); pageInfo != nil {
+		// Safely get page info without panic
+		if pageInfo, err := page.Info(); err == nil && pageInfo != nil {
 			pageURLs[id] = pageInfo.URL
 		}
 	}
@@ -655,18 +731,80 @@ func (m *Manager) isURLReachable(targetURL string) error {
 	return nil
 }
 
+// testBrowserConnection quickly tests if browser connection is healthy
+func (m *Manager) testBrowserConnection(browser *rod.Browser) error {
+	// Quick connection test with short timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("browser connection test panicked: %v", r)
+			}
+		}()
+		
+		// Try to get browser version as a quick health check
+		_, err = browser.Context(ctx).Version()
+	}()
+	
+	return err
+}
+
+// restartBrowser safely restarts the browser with improved error handling
+func (m *Manager) restartBrowser() error {
+	m.logger.WithComponent("browser").Info("Attempting to restart browser")
+	
+	// Stop browser with extra safety (ignore panics)
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.WithComponent("browser").Warn("Panic during browser stop, continuing", zap.Any("panic", r))
+			}
+		}()
+		m.Stop()
+	}()
+	
+	// Create new context
+	m.ctx, m.cancel = context.WithCancel(context.Background())
+	
+	// Start browser
+	if err := m.Start(m.config); err != nil {
+		return fmt.Errorf("failed to restart browser: %w", err)
+	}
+	
+	m.logger.WithComponent("browser").Info("Browser restarted successfully")
+	return nil
+}
+
 // CheckHealth verifies the browser connection is still active
 func (m *Manager) CheckHealth() error {
-	if m.browser == nil {
+	m.mutex.RLock()
+	browser := m.browser
+	m.mutex.RUnlock()
+	
+	if browser == nil {
 		return fmt.Errorf("browser not started")
 	}
 
-	// Try to get browser version as a simple health check
+	// Try to get browser pages as a simple health check with panic recovery
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	
-	// Use a simple evaluation to check if browser is responsive
-	_, err := m.browser.Context(ctx).Pages()
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.WithComponent("browser").Warn("Browser health check panicked",
+					zap.Any("panic", r))
+				err = fmt.Errorf("browser health check panicked: %v", r)
+			}
+		}()
+		
+		_, err = browser.Context(ctx).Pages()
+	}()
+	
 	if err != nil {
 		m.logger.WithComponent("browser").Warn("Browser health check failed",
 			zap.Error(err))
@@ -682,42 +820,15 @@ func (m *Manager) EnsureHealthy() error {
 		m.logger.WithComponent("browser").Info("Browser unhealthy, attempting restart",
 			zap.Error(err))
 		
-		// Store current page URLs before restart
-		pageURLs := make(map[string]string)
-		m.mutex.RLock()
-		for id, page := range m.pages {
-			if pageInfo := page.MustInfo(); pageInfo != nil {
-				pageURLs[id] = pageInfo.URL
-			}
-		}
-		m.mutex.RUnlock()
-
-		// Stop and restart browser
-		if stopErr := m.Stop(); stopErr != nil {
-			m.logger.WithComponent("browser").Error("Failed to stop unhealthy browser",
-				zap.Error(stopErr))
-		}
-
-		// Create new context
-		m.ctx, m.cancel = context.WithCancel(context.Background())
-
-		if startErr := m.Start(m.config); startErr != nil {
-			return fmt.Errorf("failed to restart browser: %w", startErr)
-		}
-
-		// Restore pages
-		for oldID, url := range pageURLs {
-			if url != "" {
-				if _, _, restoreErr := m.NewPage(url); restoreErr != nil {
-					m.logger.WithComponent("browser").Warn("Failed to restore page after restart",
-						zap.String("page_id", oldID),
-						zap.String("url", url),
-						zap.Error(restoreErr))
-				}
-			}
-		}
-
-		m.logger.WithComponent("browser").Info("Browser restarted successfully")
+		// For now, instead of trying to restart the browser (which often fails),
+		// let's just mark it as needing restart and continue
+		// This prevents cascading failures in the health monitor
+		m.logger.WithComponent("browser").Warn("Browser health check failed, but continuing to avoid cascading failures. Browser will be restarted on next tool use.",
+			zap.Error(err))
+		
+		// Mark browser as unhealthy but don't attempt immediate restart
+		// It will be restarted when a tool tries to use it
+		return err
 	}
 
 	return nil
@@ -748,8 +859,10 @@ func (m *Manager) GetAllPages() []PageInfo {
 		
 		// Fallback to basic URL if available
 		if url == "" {
-			if pageURL := page.MustInfo().URL; pageURL != "" {
-				url = pageURL
+			if pageInfo, err := page.Info(); err == nil && pageInfo != nil {
+				if pageInfo.URL != "" {
+					url = pageInfo.URL
+				}
 			}
 		}
 		

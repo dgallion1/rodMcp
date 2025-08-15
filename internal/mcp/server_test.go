@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+
 // Mock tool for testing
 type mockTool struct {
 	name        string
@@ -143,6 +144,12 @@ func TestHandleInitializeMessage(t *testing.T) {
 	log, _ := logger.New(logger.Config{LogLevel: "error", LogDir: "/tmp"})
 	server := NewServer(log)
 	
+	// Start the connection manager for testing
+	if err := server.connectionMgr.Start(); err != nil {
+		t.Fatalf("Failed to start connection manager: %v", err)
+	}
+	defer server.connectionMgr.Stop()
+	
 	// Create initialize request
 	initReq := types.InitializeRequest{
 		ProtocolVersion: types.CurrentMCPVersion,
@@ -168,6 +175,12 @@ func TestHandleInitializeMessage(t *testing.T) {
 func TestHandleToolsList(t *testing.T) {
 	log, _ := logger.New(logger.Config{LogLevel: "error", LogDir: "/tmp"})
 	server := NewServer(log)
+	
+	// Start the connection manager for testing
+	if err := server.connectionMgr.Start(); err != nil {
+		t.Fatalf("Failed to start connection manager: %v", err)
+	}
+	defer server.connectionMgr.Stop()
 	
 	// Register a test tool
 	tool := &mockTool{
@@ -198,6 +211,12 @@ func TestHandleToolsList(t *testing.T) {
 func TestHandleToolsCall(t *testing.T) {
 	log, _ := logger.New(logger.Config{LogLevel: "error", LogDir: "/tmp"})
 	server := NewServer(log)
+	
+	// Start the connection manager for testing
+	if err := server.connectionMgr.Start(); err != nil {
+		t.Fatalf("Failed to start connection manager: %v", err)
+	}
+	defer server.connectionMgr.Stop()
 	
 	// Register a test tool with custom execution
 	executed := false
@@ -253,6 +272,12 @@ func TestHandleToolsCallNotFound(t *testing.T) {
 	log, _ := logger.New(logger.Config{LogLevel: "error", LogDir: "/tmp"})
 	server := NewServer(log)
 	
+	// Start the connection manager for testing
+	if err := server.connectionMgr.Start(); err != nil {
+		t.Fatalf("Failed to start connection manager: %v", err)
+	}
+	defer server.connectionMgr.Stop()
+	
 	// Create tools/call request for non-existent tool
 	callReq := types.CallToolRequest{
 		Name: "nonexistent_tool",
@@ -278,6 +303,12 @@ func TestHandleToolsCallNotFound(t *testing.T) {
 func TestHandleToolsCallExecutionError(t *testing.T) {
 	log, _ := logger.New(logger.Config{LogLevel: "error", LogDir: "/tmp"})
 	server := NewServer(log)
+	
+	// Start the connection manager for testing
+	if err := server.connectionMgr.Start(); err != nil {
+		t.Fatalf("Failed to start connection manager: %v", err)
+	}
+	defer server.connectionMgr.Stop()
 	
 	// Register a tool that returns an error
 	tool := &mockTool{
@@ -375,6 +406,12 @@ func TestHandleNotificationsInitialized(t *testing.T) {
 	log, _ := logger.New(logger.Config{LogLevel: "error", LogDir: "/tmp"})
 	server := NewServer(log)
 	
+	// Start the connection manager for testing
+	if err := server.connectionMgr.Start(); err != nil {
+		t.Fatalf("Failed to start connection manager: %v", err)
+	}
+	defer server.connectionMgr.Stop()
+	
 	if server.initialized {
 		t.Error("Server should not be initialized initially")
 	}
@@ -404,6 +441,12 @@ func TestSendResponse(t *testing.T) {
 	log, _ := logger.New(logger.Config{LogLevel: "error", LogDir: "/tmp"})
 	server := NewServer(log)
 	
+	// Start the connection manager for testing
+	if err := server.connectionMgr.Start(); err != nil {
+		t.Fatalf("Failed to start connection manager: %v", err)
+	}
+	defer server.connectionMgr.Stop()
+	
 	result := map[string]string{"status": "success"}
 	
 	// This would normally write to stdout, but we can't easily capture that in tests
@@ -418,6 +461,12 @@ func TestSendError(t *testing.T) {
 	log, _ := logger.New(logger.Config{LogLevel: "error", LogDir: "/tmp"})
 	server := NewServer(log)
 	
+	// Start the connection manager for testing
+	if err := server.connectionMgr.Start(); err != nil {
+		t.Fatalf("Failed to start connection manager: %v", err)
+	}
+	defer server.connectionMgr.Stop()
+	
 	err := server.sendError(1, -32000, "Test error", "Additional data")
 	if err != nil {
 		t.Errorf("sendError failed: %v", err)
@@ -427,6 +476,12 @@ func TestSendError(t *testing.T) {
 func TestSendLogMessage(t *testing.T) {
 	log, _ := logger.New(logger.Config{LogLevel: "error", LogDir: "/tmp"})
 	server := NewServer(log)
+	
+	// Start the connection manager for testing
+	if err := server.connectionMgr.Start(); err != nil {
+		t.Fatalf("Failed to start connection manager: %v", err)
+	}
+	defer server.connectionMgr.Stop()
 	
 	logData := map[string]interface{}{
 		"component": "test",
@@ -458,6 +513,12 @@ func TestUpdateActivity(t *testing.T) {
 func TestSendHeartbeat(t *testing.T) {
 	log, _ := logger.New(logger.Config{LogLevel: "error", LogDir: "/tmp"})
 	server := NewServer(log)
+	
+	// Start the connection manager for testing
+	if err := server.connectionMgr.Start(); err != nil {
+		t.Fatalf("Failed to start connection manager: %v", err)
+	}
+	defer server.connectionMgr.Stop()
 	
 	// This would normally write to stdout
 	err := server.sendHeartbeat()

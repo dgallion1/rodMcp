@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 )
 
+
 type Server struct {
 	logger           *logger.Logger
 	tools            map[string]Tool
@@ -28,6 +29,7 @@ type Server struct {
 	connectionMgr    *connection.ConnectionManager
 	circuitBreaker   *circuitbreaker.MultiLevelCircuitBreaker
 	browserManager   BrowserHealthChecker // Interface for browser health checking
+	lastActivity     time.Time            // Last activity timestamp for heartbeat monitoring
 }
 
 type Tool interface {
@@ -64,6 +66,7 @@ func NewServer(log *logger.Logger) *Server {
 		cancel:         cancel,
 		connectionMgr:  connManager,
 		circuitBreaker: circuitBreaker,
+		lastActivity:   time.Now(),
 	}
 	
 	// Set up circuit breaker callbacks
@@ -81,6 +84,7 @@ func NewServer(log *logger.Logger) *Server {
 	
 	return server
 }
+
 
 func (s *Server) RegisterTool(tool Tool) {
 	s.toolsMutex.Lock()
@@ -122,28 +126,51 @@ func (s *Server) startMessageLoop() error {
 			return nil
 
 		default:
+			// Check if we're still connected before trying to read
+			if !s.connectionMgr.IsConnected() {
+				s.logger.WithComponent("mcp").Debug("Not connected - waiting for reconnection")
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
 			// Read message using connection manager
 			line, err := s.connectionMgr.ReadMessage()
 			if err != nil {
 				if err == io.EOF {
-					s.logger.WithComponent("mcp").Debug("Input stream closed, waiting for new connection")
-					// For EOF, wait longer to prevent busy loop - clients will reconnect when needed
-					time.Sleep(5 * time.Second)
+					s.logger.WithComponent("mcp").Debug("Input stream closed gracefully")
+					// For EOF, wait briefly and continue - this is normal for MCP
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+				
+				// Check for "not connected" errors - pause processing
+				if strings.Contains(err.Error(), "not connected") {
+					s.logger.WithComponent("mcp").Debug("Connection lost - pausing message processing")
+					time.Sleep(1 * time.Second)
 					continue
 				}
 				
 				// Check if this is a recoverable error
 				if strings.Contains(err.Error(), "recoverable") {
-					s.logger.WithComponent("mcp").Debug("Recoverable connection error, waiting", zap.Error(err))
-					time.Sleep(2 * time.Second)
+					s.logger.WithComponent("mcp").Debug("Recoverable error - continuing operation", zap.Error(err))
+					// Brief pause to prevent busy loop, but don't wait too long
+					time.Sleep(50 * time.Millisecond)
 					continue
 				}
 				
-				s.logger.WithComponent("mcp").Error("Failed to read message",
+				// Check for timeout errors - these are also recoverable
+				if strings.Contains(err.Error(), "timeout") {
+					s.logger.WithComponent("mcp").Debug("Read timeout - continuing", zap.Error(err))
+					time.Sleep(10 * time.Millisecond)
+					continue
+				}
+				
+				// Log other errors but don't exit - let connection manager handle recovery
+				s.logger.WithComponent("mcp").Warn("Read message error - continuing with recovery",
 					zap.Error(err))
 				
-				// Continue processing - connection manager handles reconnection
-				time.Sleep(100 * time.Millisecond) // Brief pause before retry
+				// Brief pause before retry to prevent busy loop
+				time.Sleep(100 * time.Millisecond)
 				continue
 			}
 
@@ -199,6 +226,12 @@ func (s *Server) startHealthMonitor() {
 }
 
 func (s *Server) handleMessage(data []byte) error {
+	// Don't process messages if we're not connected
+	if !s.connectionMgr.IsConnected() {
+		s.logger.WithComponent("mcp").Debug("Ignoring message - not connected")
+		return nil
+	}
+
 	var req types.JSONRPCRequest
 	if err := json.Unmarshal(data, &req); err != nil {
 		return s.sendError(nil, -32700, "Parse error", nil)
@@ -271,12 +304,26 @@ func (s *Server) handleToolsList(req *types.JSONRPCRequest) error {
 }
 
 func (s *Server) handleToolsCall(req *types.JSONRPCRequest) error {
+	// Validate connection before executing tools
+	if !s.connectionMgr.IsConnected() {
+		s.logger.WithComponent("mcp").Warn("Tool call attempted while disconnected", 
+			zap.String("tool", "unknown"))
+		return s.sendError(req.ID, -32001, "Server not connected", nil)
+	}
+
 	var callReq types.CallToolRequest
 	if req.Params != nil {
 		params, _ := json.Marshal(req.Params)
 		if err := json.Unmarshal(params, &callReq); err != nil {
 			return s.sendError(req.ID, -32602, "Invalid params", nil)
 		}
+	}
+
+	// Validate connection again with tool name for better logging
+	if !s.connectionMgr.IsConnected() {
+		s.logger.WithComponent("mcp").Warn("Tool call attempted while disconnected", 
+			zap.String("tool", callReq.Name))
+		return s.sendError(req.ID, -32001, "Server not connected", nil)
 	}
 
 	s.toolsMutex.RLock()
@@ -286,6 +333,9 @@ func (s *Server) handleToolsCall(req *types.JSONRPCRequest) error {
 	if !exists {
 		return s.sendError(req.ID, -32601, "Tool not found", nil)
 	}
+
+	s.logger.WithComponent("mcp").Debug("Executing tool", 
+		zap.String("tool", callReq.Name))
 
 	result, err := tool.Execute(callReq.Arguments)
 	if err != nil {
@@ -357,6 +407,26 @@ func (s *Server) SendLogMessage(level string, message string, data map[string]in
 	return s.writeMessage(notification)
 }
 
+// updateActivity updates the last activity timestamp
+func (s *Server) updateActivity() {
+	s.lastActivity = time.Now()
+}
+
+// sendHeartbeat sends a heartbeat notification to the client
+func (s *Server) sendHeartbeat() error {
+	s.updateActivity()
+	
+	// Send a heartbeat notification
+	heartbeat := types.JSONRPCRequest{
+		JSONRPC: "2.0",
+		Method: "notifications/heartbeat",
+		Params: map[string]interface{}{
+			"timestamp": s.lastActivity.Unix(),
+		},
+	}
+	
+	return s.writeMessage(heartbeat)
+}
 
 // Stop gracefully shuts down the server
 func (s *Server) Stop() error {

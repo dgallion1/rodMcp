@@ -351,12 +351,18 @@ func main() {
 	})
 
 	// Wait for shutdown signal or error
+	var lastSigpipe time.Time
 	for {
 		select {
 		case sig := <-sigChan:
 			switch sig {
 			case syscall.SIGPIPE:
-				log.Info("Received SIGPIPE - client disconnected, continuing operation")
+				// Only log SIGPIPE if it's been more than 1 second since the last one
+				now := time.Now()
+				if now.Sub(lastSigpipe) > time.Second {
+					log.Info("Received SIGPIPE - client disconnected, continuing operation")
+					lastSigpipe = now
+				}
 				// Don't shut down on SIGPIPE, let connection manager handle it
 				continue
 			case syscall.SIGHUP:
@@ -825,7 +831,7 @@ ENVIRONMENT VARIABLES:
 `, 
 		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], 
 		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], 
-		os.Args[0], os.Args[0], os.Args[0], Version, Commit)
+		os.Args[0], os.Args[0], os.Args[0], os.Args[0], Version, Commit)
 }
 
 func listTools() {
