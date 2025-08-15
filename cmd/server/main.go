@@ -317,9 +317,9 @@ func main() {
 	// Help system
 	mcpServer.RegisterTool(webtools.NewHelpTool(log))
 
-	// Handle graceful shutdown
+	// Handle graceful shutdown with enhanced signal handling
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGPIPE, syscall.SIGHUP)
 
 	// Start MCP server in a goroutine
 	errChan := make(chan error, 1)
@@ -351,12 +351,29 @@ func main() {
 	})
 
 	// Wait for shutdown signal or error
-	select {
-	case sig := <-sigChan:
-		log.Info("Received shutdown signal", zap.String("signal", sig.String()))
-	case err := <-errChan:
-		log.Error("MCP server error", zap.Error(err))
+	for {
+		select {
+		case sig := <-sigChan:
+			switch sig {
+			case syscall.SIGPIPE:
+				log.Info("Received SIGPIPE - client disconnected, continuing operation")
+				// Don't shut down on SIGPIPE, let connection manager handle it
+				continue
+			case syscall.SIGHUP:
+				log.Info("Received SIGHUP - configuration reload requested, shutting down for restart")
+				goto shutdown
+			default:
+				log.Info("Received shutdown signal", zap.String("signal", sig.String()))
+				goto shutdown
+			}
+		case err := <-errChan:
+			log.Error("MCP server error", zap.Error(err))
+			// For critical errors, shut down
+			goto shutdown
+		}
 	}
+
+shutdown:
 
 	log.Info("Shutting down RodMCP server")
 	

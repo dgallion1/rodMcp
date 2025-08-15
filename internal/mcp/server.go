@@ -1,14 +1,15 @@
 package mcp
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
+	"rodmcp/internal/circuitbreaker"
+	"rodmcp/internal/connection"
 	"rodmcp/internal/logger"
 	"rodmcp/pkg/types"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,18 +17,17 @@ import (
 )
 
 type Server struct {
-	logger         *logger.Logger
-	tools          map[string]Tool
-	toolsMutex     sync.RWMutex
-	initialized    bool
-	version        types.MCPVersion
-	info           types.ServerInfo
-	ctx            context.Context
-	cancel         context.CancelFunc
-	lastActivity   time.Time
-	activityMutex  sync.RWMutex
-	heartbeatChan  chan struct{}
-	browserManager BrowserHealthChecker // Interface for browser health checking
+	logger           *logger.Logger
+	tools            map[string]Tool
+	toolsMutex       sync.RWMutex
+	initialized      bool
+	version          types.MCPVersion
+	info             types.ServerInfo
+	ctx              context.Context
+	cancel           context.CancelFunc
+	connectionMgr    *connection.ConnectionManager
+	circuitBreaker   *circuitbreaker.MultiLevelCircuitBreaker
+	browserManager   BrowserHealthChecker // Interface for browser health checking
 }
 
 type Tool interface {
@@ -44,19 +44,42 @@ type BrowserHealthChecker interface {
 
 func NewServer(log *logger.Logger) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Server{
-		logger:        log,
-		tools:         make(map[string]Tool),
-		version:       types.CurrentMCPVersion,
+	
+	// Initialize connection manager with robust configuration
+	connConfig := connection.DefaultConfig()
+	connManager := connection.NewConnectionManager(log, connConfig)
+	
+	// Initialize circuit breakers for different operation types
+	circuitBreaker := circuitbreaker.NewMultiLevelCircuitBreaker()
+	
+	server := &Server{
+		logger:         log,
+		tools:          make(map[string]Tool),
+		version:        types.CurrentMCPVersion,
 		info: types.ServerInfo{
 			Name:    "rodmcp",
 			Version: "1.0.0",
 		},
-		ctx:           ctx,
-		cancel:        cancel,
-		lastActivity:  time.Now(),
-		heartbeatChan: make(chan struct{}, 1),
+		ctx:            ctx,
+		cancel:         cancel,
+		connectionMgr:  connManager,
+		circuitBreaker: circuitBreaker,
 	}
+	
+	// Set up circuit breaker callbacks
+	circuitBreaker.BrowserCircuitBreaker.CircuitBreaker.OnStateChange(func(from, to circuitbreaker.State) {
+		log.WithComponent("circuit-breaker").Warn("Browser circuit breaker state changed",
+			zap.String("from", from.String()),
+			zap.String("to", to.String()))
+	})
+	
+	circuitBreaker.NetworkCircuitBreaker.CircuitBreaker.OnStateChange(func(from, to circuitbreaker.State) {
+		log.WithComponent("circuit-breaker").Warn("Network circuit breaker state changed",
+			zap.String("from", from.String()),
+			zap.String("to", to.String()))
+	})
+	
+	return server
 }
 
 func (s *Server) RegisterTool(tool Tool) {
@@ -73,18 +96,76 @@ func (s *Server) SetBrowserManager(browserMgr BrowserHealthChecker) {
 }
 
 func (s *Server) Start() error {
-	s.logger.WithComponent("mcp").Info("Starting MCP server with connection management",
+	s.logger.WithComponent("mcp").Info("Starting MCP server with enhanced connection management",
 		zap.String("version", string(s.version)))
 
-	// Start connection monitoring in background
-	go s.startConnectionMonitor()
+	// Start connection manager
+	if err := s.connectionMgr.Start(); err != nil {
+		return fmt.Errorf("failed to start connection manager: %w", err)
+	}
 
-	// Start message reading with timeout handling
+	// Start message reading with robust connection handling
 	return s.startMessageLoop()
 }
 
-func (s *Server) startConnectionMonitor() {
-	ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
+func (s *Server) startMessageLoop() error {
+	s.logger.WithComponent("mcp").Info("Starting robust message loop with connection management")
+
+	// Start health monitoring in background
+	go s.startHealthMonitor()
+
+	// Process messages with robust connection handling
+	for {
+		select {
+		case <-s.ctx.Done():
+			s.logger.WithComponent("mcp").Info("Server shutting down")
+			return nil
+
+		default:
+			// Read message using connection manager
+			line, err := s.connectionMgr.ReadMessage()
+			if err != nil {
+				if err == io.EOF {
+					s.logger.WithComponent("mcp").Debug("Input stream closed, waiting for new connection")
+					// For EOF, wait longer to prevent busy loop - clients will reconnect when needed
+					time.Sleep(5 * time.Second)
+					continue
+				}
+				
+				// Check if this is a recoverable error
+				if strings.Contains(err.Error(), "recoverable") {
+					s.logger.WithComponent("mcp").Debug("Recoverable connection error, waiting", zap.Error(err))
+					time.Sleep(2 * time.Second)
+					continue
+				}
+				
+				s.logger.WithComponent("mcp").Error("Failed to read message",
+					zap.Error(err))
+				
+				// Continue processing - connection manager handles reconnection
+				time.Sleep(100 * time.Millisecond) // Brief pause before retry
+				continue
+			}
+
+			if line == "" {
+				continue
+			}
+
+			s.logger.WithComponent("mcp").Debug("Received message",
+				zap.String("message", line))
+
+			// Handle message with error recovery
+			if err := s.handleMessage([]byte(line)); err != nil {
+				s.logger.WithComponent("mcp").Error("Failed to handle message",
+					zap.Error(err))
+				// Don't exit on message handling errors, continue processing
+			}
+		}
+	}
+}
+
+func (s *Server) startHealthMonitor() {
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -92,97 +173,27 @@ func (s *Server) startConnectionMonitor() {
 		case <-s.ctx.Done():
 			return
 		case <-ticker.C:
-			s.activityMutex.RLock()
-			lastActivity := s.lastActivity
-			s.activityMutex.RUnlock()
-
-			// If no activity for 5 minutes, send heartbeat
-			if time.Since(lastActivity) > 5*time.Minute {
-				s.logger.WithComponent("mcp").Debug("Sending connection heartbeat")
-				if err := s.sendHeartbeat(); err != nil {
-					s.logger.WithComponent("mcp").Warn("Heartbeat failed",
-						zap.Error(err))
-				}
-			}
-			
 			// Check browser health if we have a browser manager
 			if s.browserManager != nil {
-				if err := s.browserManager.EnsureHealthy(); err != nil {
+				err := s.circuitBreaker.ExecuteBrowserOperation(func() error {
+					return s.browserManager.EnsureHealthy()
+				})
+				
+				if err != nil {
 					s.logger.WithComponent("mcp").Error("Browser health check failed",
 						zap.Error(err))
 				}
 			}
 			
-			// If no activity for 10 minutes, log warning
-			if time.Since(lastActivity) > 10*time.Minute {
-				s.logger.WithComponent("mcp").Warn("No client activity detected",
-					zap.Duration("idle_time", time.Since(lastActivity)))
-			}
-		}
-	}
-}
-
-func (s *Server) startMessageLoop() error {
-	scanner := bufio.NewScanner(os.Stdin)
-	
-	// Set a reasonable buffer size for large messages
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB buffer
-
-	inputChan := make(chan string, 10)
-	errorChan := make(chan error, 1)
-
-	// Read input in a separate goroutine to enable timeout handling
-	go func() {
-		defer close(inputChan)
-		for scanner.Scan() {
-			select {
-			case inputChan <- scanner.Text():
-			case <-s.ctx.Done():
-				return
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			errorChan <- fmt.Errorf("scanner error: %w", err)
-		}
-	}()
-
-	// Process messages with timeout handling
-	for {
-		select {
-		case <-s.ctx.Done():
-			s.logger.WithComponent("mcp").Info("Server shutting down")
-			return nil
-
-		case err := <-errorChan:
-			s.logger.WithComponent("mcp").Error("Input error", zap.Error(err))
-			return err
-
-		case line, ok := <-inputChan:
-			if !ok {
-				// Channel closed, likely EOF from stdin
-				s.logger.WithComponent("mcp").Info("Input stream closed")
-				return nil
-			}
-
-			if line == "" {
-				continue
-			}
-
-			// Update activity timestamp
-			s.updateActivity()
-
-			s.logger.WithComponent("mcp").Debug("Received message",
-				zap.String("message", line))
-
-			if err := s.handleMessage([]byte(line)); err != nil {
-				s.logger.WithComponent("mcp").Error("Failed to handle message",
-					zap.Error(err))
-				// Don't exit on message handling errors, continue processing
-			}
-
-		case <-time.After(1 * time.Minute):
-			// Periodic check - not strictly necessary but helps with debugging
-			s.logger.WithComponent("mcp").Debug("Server alive check")
+			// Log connection stats
+			stats := s.connectionMgr.GetStats()
+			s.logger.WithComponent("mcp").Debug("Connection health check",
+				zap.Any("connection_stats", stats))
+			
+			// Log circuit breaker stats
+			cbStats := s.circuitBreaker.GetOverallStats()
+			s.logger.WithComponent("mcp").Debug("Circuit breaker status",
+				zap.Any("circuit_breaker_stats", cbStats))
 		}
 	}
 }
@@ -316,7 +327,8 @@ func (s *Server) writeMessage(message interface{}) error {
 		return err
 	}
 
-	_, err = io.WriteString(os.Stdout, string(data)+"\n")
+	// Use connection manager for robust message writing
+	err = s.connectionMgr.WriteMessage(string(data))
 	if err != nil {
 		return err
 	}
@@ -345,29 +357,16 @@ func (s *Server) SendLogMessage(level string, message string, data map[string]in
 	return s.writeMessage(notification)
 }
 
-// updateActivity updates the last activity timestamp
-func (s *Server) updateActivity() {
-	s.activityMutex.Lock()
-	defer s.activityMutex.Unlock()
-	s.lastActivity = time.Now()
-}
-
-// sendHeartbeat sends a heartbeat ping to check connection health
-func (s *Server) sendHeartbeat() error {
-	ping := types.JSONRPCRequest{
-		JSONRPC: "2.0",
-		Method:  "notifications/ping",
-		Params: map[string]interface{}{
-			"timestamp": time.Now().UTC().Format(time.RFC3339),
-		},
-	}
-
-	return s.writeMessage(ping)
-}
 
 // Stop gracefully shuts down the server
 func (s *Server) Stop() error {
 	s.logger.WithComponent("mcp").Info("Stopping MCP server")
+	
+	// Stop connection manager first
+	if err := s.connectionMgr.Stop(); err != nil {
+		s.logger.WithComponent("mcp").Error("Error stopping connection manager", zap.Error(err))
+	}
+	
 	s.cancel()
 	return nil
 }
