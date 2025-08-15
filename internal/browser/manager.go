@@ -9,8 +9,10 @@ import (
 	"os/exec"
 	"rodmcp/internal/logger"
 	debugpkg "runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-rod/rod"
@@ -27,13 +29,26 @@ const (
 )
 
 type Manager struct {
-	logger  *logger.Logger
-	browser *rod.Browser
-	pages   map[string]*rod.Page
-	mutex   sync.RWMutex
-	ctx     context.Context
-	cancel  context.CancelFunc
-	config  Config
+	logger         *logger.Logger
+	browser        *rod.Browser
+	pages          map[string]*rod.Page
+	mutex          sync.RWMutex
+	ctx            context.Context
+	cancel         context.CancelFunc
+	config         Config
+	
+	// Browser process lifecycle management
+	browserPID     int
+	controlURL     string
+	launcher       *launcher.Launcher
+	healthTicker   *time.Ticker
+	lastHealthy    time.Time
+	restartCount   int
+	maxRestarts    int
+	
+	// Connection monitoring
+	wsConnections  map[string]bool  // Track WebSocket connections
+	connMutex      sync.RWMutex
 }
 
 type Config struct {
@@ -48,10 +63,13 @@ func NewManager(log *logger.Logger, config Config) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Manager{
-		logger: log,
-		pages:  make(map[string]*rod.Page),
-		ctx:    ctx,
-		cancel: cancel,
+		logger:        log,
+		pages:         make(map[string]*rod.Page),
+		ctx:           ctx,
+		cancel:        cancel,
+		maxRestarts:   3,
+		wsConnections: make(map[string]bool),
+		lastHealthy:   time.Now(),
 	}
 }
 
@@ -85,6 +103,9 @@ func (m *Manager) Start(config Config) error {
 		l = l.Devtools(true)
 	}
 
+	// Store launcher for process management
+	m.launcher = l
+	
 	// Launch browser with timeout
 	launchCtx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 	defer cancel()
@@ -104,6 +125,13 @@ func (m *Manager) Start(config Config) error {
 		if err != nil {
 			errChan <- err
 		} else {
+			// Store control URL and try to extract PID
+			m.controlURL = url
+			if pid := m.extractBrowserPID(url); pid > 0 {
+				m.browserPID = pid
+				m.logger.WithComponent("browser").Info("Browser process started", 
+					zap.Int("pid", pid), zap.String("control_url", url))
+			}
 			urlChan <- url
 		}
 	}()
@@ -198,7 +226,11 @@ func (m *Manager) Start(config Config) error {
 
 	m.mutex.Lock()
 	m.browser = browser
+	m.lastHealthy = time.Now()
 	m.mutex.Unlock()
+	
+	// Start health monitoring
+	m.startHealthMonitoring()
 	
 	duration := time.Since(start).Milliseconds()
 	m.logger.LogBrowserAction("started", url, duration)
@@ -209,6 +241,12 @@ func (m *Manager) Start(config Config) error {
 func (m *Manager) Stop() error {
 	m.logger.LogBrowserAction("stopping", "", 0)
 	start := time.Now()
+
+	// Stop health monitoring first
+	if m.healthTicker != nil {
+		m.healthTicker.Stop()
+		m.healthTicker = nil
+	}
 
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -908,4 +946,179 @@ func (m *Manager) SwitchToPage(pageID string) error {
 
 	m.logger.LogBrowserAction("page_switched", pageID, 0)
 	return nil
+}
+
+// extractBrowserPID attempts to extract the browser PID from control URL
+func (m *Manager) extractBrowserPID(controlURL string) int {
+	// Try to find browser process by looking at running processes
+	// This is a heuristic approach since Rod doesn't expose the PID directly
+	cmd := exec.Command("pgrep", "-f", "chrome.*--remote-debugging-port")
+	output, err := cmd.Output()
+	if err != nil {
+		m.logger.WithComponent("browser").Debug("Could not find browser PID", zap.Error(err))
+		return 0
+	}
+	
+	if len(output) > 0 {
+		pidStr := strings.TrimSpace(string(output))
+		lines := strings.Split(pidStr, "\n")
+		if len(lines) > 0 {
+			if pid, err := strconv.Atoi(lines[0]); err == nil {
+				return pid
+			}
+		}
+	}
+	
+	return 0
+}
+
+// startHealthMonitoring starts periodic health checks of the browser process
+func (m *Manager) startHealthMonitoring() {
+	if m.healthTicker != nil {
+		m.healthTicker.Stop()
+	}
+	
+	m.healthTicker = time.NewTicker(10 * time.Second)
+	
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.WithComponent("browser").Error("Health monitoring panic", 
+					zap.Any("panic", r))
+			}
+		}()
+		
+		for {
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-m.healthTicker.C:
+				m.performHealthCheck()
+			}
+		}
+	}()
+}
+
+// performHealthCheck checks if the browser process is still alive and responsive
+func (m *Manager) performHealthCheck() {
+	m.mutex.RLock()
+	browser := m.browser
+	pid := m.browserPID
+	m.mutex.RUnlock()
+	
+	if browser == nil {
+		return
+	}
+	
+	// Check if browser process is still running
+	if pid > 0 && !m.isProcessRunning(pid) {
+		m.logger.WithComponent("browser").Warn("Browser process died", 
+			zap.Int("pid", pid))
+		m.handleBrowserDeath()
+		return
+	}
+	
+	// Check browser responsiveness
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	
+	err := func() error {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.WithComponent("browser").Debug("Health check panic", 
+					zap.Any("panic", r))
+			}
+		}()
+		
+		_, err := browser.Context(ctx).Version()
+		return err
+	}()
+	
+	if err != nil {
+		m.logger.WithComponent("browser").Warn("Browser health check failed", 
+			zap.Error(err))
+		// Don't immediately restart - wait for multiple failures
+		m.mutex.Lock()
+		timeSinceHealthy := time.Since(m.lastHealthy)
+		m.mutex.Unlock()
+		
+		if timeSinceHealthy > 30*time.Second {
+			m.logger.WithComponent("browser").Warn("Browser unresponsive for too long, marking for restart")
+			m.handleBrowserDeath()
+		}
+	} else {
+		m.mutex.Lock()
+		m.lastHealthy = time.Now()
+		m.mutex.Unlock()
+	}
+}
+
+// isProcessRunning checks if a process with the given PID is still running
+func (m *Manager) isProcessRunning(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	
+	// Send signal 0 to check if process exists
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	
+	err = process.Signal(syscall.Signal(0))
+	return err == nil
+}
+
+// handleBrowserDeath handles when the browser process dies unexpectedly
+func (m *Manager) handleBrowserDeath() {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	
+	if m.restartCount >= m.maxRestarts {
+		m.logger.WithComponent("browser").Error("Browser restart limit exceeded", 
+			zap.Int("restart_count", m.restartCount),
+			zap.Int("max_restarts", m.maxRestarts))
+		return
+	}
+	
+	m.logger.WithComponent("browser").Info("Attempting automatic browser restart", 
+		zap.Int("restart_attempt", m.restartCount+1))
+	
+	// Stop health monitoring during restart
+	if m.healthTicker != nil {
+		m.healthTicker.Stop()
+		m.healthTicker = nil
+	}
+	
+	// Clean up current browser
+	m.browser = nil
+	m.browserPID = 0
+	
+	// Clear pages
+	for id := range m.pages {
+		delete(m.pages, id)
+	}
+	
+	// Increment restart count
+	m.restartCount++
+	
+	// Restart browser in background
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.logger.WithComponent("browser").Error("Browser restart panic", 
+					zap.Any("panic", r))
+			}
+		}()
+		
+		// Wait a bit before restart
+		time.Sleep(2 * time.Second)
+		
+		if err := m.Start(m.config); err != nil {
+			m.logger.WithComponent("browser").Error("Failed to restart browser", 
+				zap.Error(err))
+		} else {
+			m.logger.WithComponent("browser").Info("Browser restarted successfully")
+		}
+	}()
 }
