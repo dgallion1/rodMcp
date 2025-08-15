@@ -38,14 +38,15 @@ type Manager struct {
 	config         Config
 	
 	// Browser process lifecycle management
-	browserPID     int
-	controlURL     string
-	launcher       *launcher.Launcher
-	healthTicker   *time.Ticker
-	lastHealthy    time.Time
-	restartCount   int
-	maxRestarts    int
-	lastRestart    time.Time  // Track when last restart occurred
+	browserPID        int
+	controlURL        string
+	launcher          *launcher.Launcher
+	healthTicker      *time.Ticker
+	lastHealthy       time.Time
+	restartCount      int
+	maxRestarts       int
+	lastRestart       time.Time  // Track when last restart occurred
+	restartInProgress bool       // Prevent concurrent restart attempts
 	
 	// Connection monitoring
 	wsConnections  map[string]bool  // Track WebSocket connections
@@ -807,15 +808,32 @@ func (m *Manager) testBrowserConnection(browser *rod.Browser) error {
 // restartBrowser safely restarts the browser with improved error handling
 func (m *Manager) restartBrowser() error {
 	m.mutex.Lock()
+	// Check if restart is already in progress
+	if m.restartInProgress {
+		m.mutex.Unlock()
+		m.logger.WithComponent("browser").Debug("Restart already in progress, skipping")
+		return fmt.Errorf("browser restart already in progress")
+	}
+	
 	// Check restart count to prevent infinite loops
 	if m.restartCount >= m.maxRestarts {
 		m.mutex.Unlock()
 		return fmt.Errorf("browser restart limit exceeded (%d/%d)", m.restartCount, m.maxRestarts)
 	}
+	
+	// Mark restart as in progress
+	m.restartInProgress = true
 	m.restartCount++
 	currentRestartCount := m.restartCount
 	m.lastRestart = time.Now()
 	m.mutex.Unlock()
+	
+	// Ensure we clear the restart flag when done
+	defer func() {
+		m.mutex.Lock()
+		m.restartInProgress = false
+		m.mutex.Unlock()
+	}()
 	
 	m.logger.WithComponent("browser").Info("Attempting to restart browser",
 		zap.Int("restart_attempt", currentRestartCount),
@@ -849,16 +867,6 @@ func (m *Manager) restartBrowser() error {
 
 // CheckHealth verifies the browser connection is still active
 func (m *Manager) CheckHealth() error {
-	m.mutex.RLock()
-	browser := m.browser
-	m.mutex.RUnlock()
-	
-	if browser == nil {
-		// This is normal - browser may not be started yet or may have been stopped
-		// Don't treat this as an error that needs logging
-		return fmt.Errorf("browser not started")
-	}
-
 	// Try to get browser version as a simple health check with panic recovery
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -875,18 +883,20 @@ func (m *Manager) CheckHealth() error {
 			}
 		}()
 		
-		// Re-check browser under lock to ensure it's still valid
+		// Get browser reference under lock and check immediately
+		// This prevents using stale browser references
 		m.mutex.RLock()
-		currentBrowser := m.browser
+		browser := m.browser
 		m.mutex.RUnlock()
 		
-		if currentBrowser == nil {
-			err = fmt.Errorf("browser stopped during health check")
+		if browser == nil {
+			err = fmt.Errorf("browser not started")
 			return
 		}
 		
 		// Use Version() instead of Pages() as it's simpler and less likely to panic
-		_, err = currentBrowser.Context(ctx).Version()
+		// The browser reference is only valid at this moment, so use it immediately
+		_, err = browser.Context(ctx).Version()
 	}()
 	
 	if err != nil {
@@ -901,7 +911,16 @@ func (m *Manager) CheckHealth() error {
 
 // EnsureHealthy checks browser health and restarts if needed
 func (m *Manager) EnsureHealthy() error {
-	// First, check if we should reset the restart counter
+	// First, check if a restart is already in progress
+	m.mutex.RLock()
+	if m.restartInProgress {
+		m.mutex.RUnlock()
+		m.logger.WithComponent("browser").Debug("Browser restart in progress, skipping health check")
+		return nil // Don't interfere with ongoing restart
+	}
+	m.mutex.RUnlock()
+	
+	// Check if we should reset the restart counter
 	// Reset if it's been more than 5 minutes since last restart
 	m.mutex.Lock()
 	if m.restartCount > 0 && time.Since(m.lastRestart) > 5*time.Minute {
@@ -917,6 +936,12 @@ func (m *Manager) EnsureHealthy() error {
 		
 		// Attempt to restart the browser
 		if restartErr := m.restartBrowser(); restartErr != nil {
+			// Check if it's because a restart is already in progress
+			if strings.Contains(restartErr.Error(), "already in progress") {
+				m.logger.WithComponent("browser").Debug("Restart already in progress from another routine")
+				return nil // Let the other restart complete
+			}
+			
 			m.logger.WithComponent("browser").Error("Failed to restart browser automatically",
 				zap.Error(restartErr))
 			// Return the original error combined with restart error
