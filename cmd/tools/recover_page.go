@@ -29,10 +29,10 @@ func (t *RecoverPageTool) Description() string {
 func (t *RecoverPageTool) InputSchema() types.ToolSchema {
 	return types.ToolSchema{
 		Type: "object",
-		Properties: map[string]types.Property{
-			"page_id": {
-				Type:        "string",
-				Description: "The ID of the page to recover",
+		Properties: map[string]interface{}{
+			"page_id": map[string]interface{}{
+				"type":        "string",
+				"description": "The ID of the page to recover",
 			},
 		},
 		Required: []string{"page_id"},

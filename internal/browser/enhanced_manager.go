@@ -430,7 +430,7 @@ func (em *EnhancedManager) WaitForElement(pageID, selector string, timeout time.
 	defer cancel()
 	
 	// Use Rod's built-in wait with our timeout context
-	err = page.Context(ctx).Element(selector)
+	_, err = page.Context(ctx).Element(selector)
 	if err != nil {
 		// Check if it's a timeout - retry with page recovery
 		if ctx.Err() == context.DeadlineExceeded {
@@ -451,7 +451,7 @@ func (em *EnhancedManager) WaitForElement(pageID, selector string, timeout time.
 			newCtx, newCancel := context.WithTimeout(context.Background(), timeout/2)
 			defer newCancel()
 			
-			err = page.Context(newCtx).Element(selector)
+			_, err = page.Context(newCtx).Element(selector)
 		}
 	}
 	
@@ -482,7 +482,7 @@ func (em *EnhancedManager) ClickElement(pageID, selector string) error {
 			continue
 		}
 		
-		err = element.Click(proto.InputMouseButtonLeft)
+		err = element.Click(proto.InputMouseButtonLeft, 1)
 		if err == nil {
 			return nil
 		}

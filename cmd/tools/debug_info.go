@@ -41,10 +41,10 @@ func (t *DebugInfoTool) Description() string {
 func (t *DebugInfoTool) InputSchema() types.ToolSchema {
 	return types.ToolSchema{
 		Type: "object",
-		Properties: map[string]types.Property{
-			"verbose": {
-				Type:        "boolean",
-				Description: "Include verbose details (optional, default: false)",
+		Properties: map[string]interface{}{
+			"verbose": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Include verbose details (optional, default: false)",
 			},
 		},
 	}
@@ -115,20 +115,35 @@ func (t *DebugInfoTool) Execute(args map[string]interface{}) (*types.CallToolRes
 		report += "=== Circuit Breaker Status ===\n"
 		cbStats := t.circuitBreaker.GetOverallStats()
 		
-		report += fmt.Sprintf("Browser Circuit: %s (Failures: %d/%d)\n",
-			cbStats.BrowserState,
-			cbStats.BrowserFailures,
-			cbStats.BrowserRequests)
+		if browserState, ok := cbStats["BrowserState"]; ok {
+			report += fmt.Sprintf("Browser Circuit: %v", browserState)
+			if failures, ok := cbStats["BrowserFailures"]; ok {
+				if requests, ok := cbStats["BrowserRequests"]; ok {
+					report += fmt.Sprintf(" (Failures: %v/%v)", failures, requests)
+				}
+			}
+			report += "\n"
+		}
 		
-		report += fmt.Sprintf("Network Circuit: %s (Failures: %d/%d)\n",
-			cbStats.NetworkState,
-			cbStats.NetworkFailures,
-			cbStats.NetworkRequests)
+		if networkState, ok := cbStats["NetworkState"]; ok {
+			report += fmt.Sprintf("Network Circuit: %v", networkState)
+			if failures, ok := cbStats["NetworkFailures"]; ok {
+				if requests, ok := cbStats["NetworkRequests"]; ok {
+					report += fmt.Sprintf(" (Failures: %v/%v)", failures, requests)
+				}
+			}
+			report += "\n"
+		}
 		
-		report += fmt.Sprintf("Tool Circuit: %s (Failures: %d/%d)\n",
-			cbStats.ToolState,
-			cbStats.ToolFailures,
-			cbStats.ToolRequests)
+		if toolState, ok := cbStats["ToolState"]; ok {
+			report += fmt.Sprintf("Tool Circuit: %v", toolState)
+			if failures, ok := cbStats["ToolFailures"]; ok {
+				if requests, ok := cbStats["ToolRequests"]; ok {
+					report += fmt.Sprintf(" (Failures: %v/%v)", failures, requests)
+				}
+			}
+			report += "\n"
+		}
 		
 		if verbose {
 			report += fmt.Sprintf("\nCircuit Breaker Thresholds:\n")
@@ -173,8 +188,10 @@ func (t *DebugInfoTool) Execute(args map[string]interface{}) (*types.CallToolRes
 		}
 	}
 	
-	if cbStats := t.circuitBreaker.GetOverallStats(); cbStats.BrowserState != "closed" {
-		recommendations = append(recommendations, "⚠️ Browser circuit breaker is open - operations may be failing")
+	if cbStats := t.circuitBreaker.GetOverallStats(); cbStats != nil {
+		if browserState, ok := cbStats["BrowserState"]; ok && browserState != "closed" {
+			recommendations = append(recommendations, "⚠️ Browser circuit breaker is open - operations may be failing")
+		}
 	}
 	
 	if len(recommendations) == 0 {

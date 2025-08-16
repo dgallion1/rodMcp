@@ -30,7 +30,7 @@ func (t *BrowserHealthTool) Description() string {
 func (t *BrowserHealthTool) InputSchema() types.ToolSchema {
 	return types.ToolSchema{
 		Type:       "object",
-		Properties: map[string]types.Property{},
+		Properties: map[string]interface{}{},
 	}
 }
 

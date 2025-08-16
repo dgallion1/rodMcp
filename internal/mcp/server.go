@@ -49,6 +49,9 @@ func NewServer(log *logger.Logger) *Server {
 	
 	// Initialize connection manager with robust configuration
 	connConfig := connection.DefaultConfig()
+	// For MCP servers, we need much longer read timeouts since clients may not send messages immediately
+	// Set to 5 minutes to avoid infinite timeout loops while still allowing normal operation
+	connConfig.ReadTimeout = 5 * time.Minute
 	connManager := connection.NewConnectionManager(log, connConfig)
 	
 	// Initialize circuit breakers for different operation types
@@ -118,6 +121,11 @@ func (s *Server) startMessageLoop() error {
 	// Start health monitoring in background
 	go s.startHealthMonitor()
 
+	// Track consecutive timeouts to prevent infinite loops
+	consecutiveTimeouts := 0
+	maxConsecutiveTimeouts := 10
+	lastTimeoutTime := time.Time{}
+
 	// Process messages with robust connection handling
 	for {
 		select {
@@ -157,9 +165,25 @@ func (s *Server) startMessageLoop() error {
 					continue
 				}
 				
-				// Check for timeout errors - these are also recoverable
+				// Check for timeout errors - limit consecutive timeouts to prevent infinite loops
 				if strings.Contains(err.Error(), "timeout") {
-					s.logger.WithComponent("mcp").Debug("Read timeout - continuing", zap.Error(err))
+					now := time.Now()
+					if now.Sub(lastTimeoutTime) < 5*time.Second {
+						consecutiveTimeouts++
+					} else {
+						consecutiveTimeouts = 1
+					}
+					lastTimeoutTime = now
+
+					if consecutiveTimeouts > maxConsecutiveTimeouts {
+						s.logger.WithComponent("mcp").Error("Too many consecutive timeouts - shutting down to prevent infinite loop",
+							zap.Int("consecutive_timeouts", consecutiveTimeouts))
+						return fmt.Errorf("server shutting down due to %d consecutive timeouts", consecutiveTimeouts)
+					}
+
+					s.logger.WithComponent("mcp").Debug("Read timeout - continuing", 
+						zap.Error(err),
+						zap.Int("consecutive_timeouts", consecutiveTimeouts))
 					time.Sleep(10 * time.Millisecond)
 					continue
 				}
@@ -176,6 +200,9 @@ func (s *Server) startMessageLoop() error {
 			if line == "" {
 				continue
 			}
+
+			// Reset timeout counter on successful message read
+			consecutiveTimeouts = 0
 
 			s.logger.WithComponent("mcp").Debug("Received message",
 				zap.String("message", line))
@@ -338,7 +365,40 @@ func (s *Server) handleToolsCall(req *types.JSONRPCRequest) error {
 	s.logger.WithComponent("mcp").Debug("Executing tool", 
 		zap.String("tool", callReq.Name))
 
-	result, err := tool.Execute(callReq.Arguments)
+	// Create context with 30-second timeout for tool execution
+	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+	defer cancel()
+
+	// Execute tool with timeout using goroutine
+	type toolResult struct {
+		result interface{}
+		err    error
+	}
+	
+	resultChan := make(chan toolResult, 1)
+	go func() {
+		result, err := tool.Execute(callReq.Arguments)
+		resultChan <- toolResult{result: result, err: err}
+	}()
+
+	var result interface{}
+	var err error
+
+	select {
+	case res := <-resultChan:
+		result = res.result
+		err = res.err
+	case <-ctx.Done():
+		if ctx.Err() == context.DeadlineExceeded {
+			err = fmt.Errorf("tool '%s' execution timed out after 30 seconds", callReq.Name)
+		} else {
+			err = fmt.Errorf("tool '%s' execution cancelled: %v", callReq.Name, ctx.Err())
+		}
+		s.logger.WithComponent("mcp").Warn("Tool execution timed out",
+			zap.String("tool", callReq.Name),
+			zap.Duration("timeout", 30*time.Second),
+			zap.Error(ctx.Err()))
+	}
 	if err != nil {
 		s.logger.LogMCPResponse(req.Method, nil, err)
 		return s.sendError(req.ID, -32000, "Tool execution failed", err.Error())
