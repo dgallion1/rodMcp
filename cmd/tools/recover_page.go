@@ -1,20 +1,26 @@
 package tools
 
 import (
+	"context"
 	"fmt"
 	"rodmcp/internal/browser"
+	"rodmcp/internal/logger"
+	"rodmcp/internal/webtools"
 	"rodmcp/pkg/types"
+	"time"
 )
 
 // RecoverPageTool recovers an unhealthy page
 type RecoverPageTool struct {
-	browserMgr *browser.EnhancedManager
+	browserMgr   *browser.EnhancedManager
+	retryWrapper *webtools.RetryWrapper
 }
 
 // NewRecoverPageTool creates a new page recovery tool
-func NewRecoverPageTool(browserMgr *browser.EnhancedManager) *RecoverPageTool {
+func NewRecoverPageTool(browserMgr *browser.EnhancedManager, logger *logger.Logger) *RecoverPageTool {
 	return &RecoverPageTool{
-		browserMgr: browserMgr,
+		browserMgr:   browserMgr,
+		retryWrapper: webtools.NewRetryWrapper(browserMgr, logger),
 	}
 }
 
@@ -40,22 +46,25 @@ func (t *RecoverPageTool) InputSchema() types.ToolSchema {
 }
 
 func (t *RecoverPageTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
 	pageID, ok := args["page_id"].(string)
 	if !ok {
 		return nil, fmt.Errorf("page_id must be a string")
 	}
 
-	// Get current status before recovery
-	statusBefore, _ := t.browserMgr.GetPageStatus(pageID)
+	// Get current status before recovery with retry
+	statusBefore, _ := t.retryWrapper.GetPageStatusWithRetry(ctx, pageID)
 
-	// Attempt recovery
-	err := t.browserMgr.RecoverPage(pageID)
+	// Attempt recovery with retry logic
+	err := t.retryWrapper.RecoverPageWithRetry(ctx, pageID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to recover page: %w", err)
 	}
 
-	// Get status after recovery
-	statusAfter, _ := t.browserMgr.GetPageStatus(pageID)
+	// Get status after recovery with retry
+	statusAfter, _ := t.retryWrapper.GetPageStatusWithRetry(ctx, pageID)
 
 	content := []types.ToolContent{
 		{

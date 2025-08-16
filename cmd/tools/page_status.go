@@ -1,20 +1,26 @@
 package tools
 
 import (
+	"context"
 	"fmt"
 	"rodmcp/internal/browser"
+	"rodmcp/internal/logger"
+	"rodmcp/internal/webtools"
 	"rodmcp/pkg/types"
+	"time"
 )
 
 // PageStatusTool provides page health and status information
 type PageStatusTool struct {
-	browserMgr *browser.EnhancedManager
+	browserMgr   *browser.EnhancedManager
+	retryWrapper *webtools.RetryWrapper
 }
 
 // NewPageStatusTool creates a new page status tool
-func NewPageStatusTool(browserMgr *browser.EnhancedManager) *PageStatusTool {
+func NewPageStatusTool(browserMgr *browser.EnhancedManager, logger *logger.Logger) *PageStatusTool {
 	return &PageStatusTool{
-		browserMgr: browserMgr,
+		browserMgr:   browserMgr,
+		retryWrapper: webtools.NewRetryWrapper(browserMgr, logger),
 	}
 }
 
@@ -40,12 +46,16 @@ func (t *PageStatusTool) InputSchema() types.ToolSchema {
 }
 
 func (t *PageStatusTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	pageID, ok := args["page_id"].(string)
 	if !ok {
 		return nil, fmt.Errorf("page_id must be a string")
 	}
 
-	status, err := t.browserMgr.GetPageStatus(pageID)
+	// Use retry wrapper for getting page status
+	status, err := t.retryWrapper.GetPageStatusWithRetry(ctx, pageID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get page status: %w", err)
 	}

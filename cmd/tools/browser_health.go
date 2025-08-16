@@ -1,21 +1,26 @@
 package tools
 
 import (
+	"context"
 	"fmt"
 	"rodmcp/internal/browser"
+	"rodmcp/internal/logger"
+	"rodmcp/internal/webtools"
 	"rodmcp/pkg/types"
 	"time"
 )
 
 // BrowserHealthTool checks and reports browser health
 type BrowserHealthTool struct {
-	browserMgr *browser.EnhancedManager
+	browserMgr   *browser.EnhancedManager
+	retryWrapper *webtools.RetryWrapper
 }
 
 // NewBrowserHealthTool creates a new browser health tool
-func NewBrowserHealthTool(browserMgr *browser.EnhancedManager) *BrowserHealthTool {
+func NewBrowserHealthTool(browserMgr *browser.EnhancedManager, logger *logger.Logger) *BrowserHealthTool {
 	return &BrowserHealthTool{
-		browserMgr: browserMgr,
+		browserMgr:   browserMgr,
+		retryWrapper: webtools.NewRetryWrapper(browserMgr, logger),
 	}
 }
 
@@ -35,7 +40,10 @@ func (t *BrowserHealthTool) InputSchema() types.ToolSchema {
 }
 
 func (t *BrowserHealthTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
-	// Check browser health
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Check browser health with retry
 	err := t.browserMgr.CheckHealth()
 	isHealthy := err == nil
 
@@ -60,13 +68,13 @@ func (t *BrowserHealthTool) Execute(args map[string]interface{}) (*types.CallToo
 		report += fmt.Sprintf("Error: %s\n", err.Error())
 	}
 
-	// Add page information
+	// Add page information with retry for page status
 	if len(pages) > 0 {
 		report += "\nOpen Pages:\n"
 		for _, page := range pages {
-			status, _ := t.browserMgr.GetPageStatus(page.PageID)
+			status, statusErr := t.retryWrapper.GetPageStatusWithRetry(ctx, page.PageID)
 			healthStatus := "❓"
-			if status != nil {
+			if statusErr == nil && status != nil {
 				if status.IsHealthy {
 					healthStatus = "✅"
 				} else {
@@ -77,10 +85,10 @@ func (t *BrowserHealthTool) Execute(args map[string]interface{}) (*types.CallToo
 		}
 	}
 
-	// Attempt to ensure healthy if not healthy
+	// Attempt to ensure healthy if not healthy with retry
 	if !isHealthy {
 		report += "\nAttempting automatic recovery...\n"
-		if ensureErr := t.browserMgr.EnsureHealthy(); ensureErr == nil {
+		if ensureErr := t.retryWrapper.EnsureHealthyWithRetry(ctx); ensureErr == nil {
 			report += "✅ Recovery successful!\n"
 		} else {
 			report += fmt.Sprintf("❌ Recovery failed: %s\n", ensureErr.Error())

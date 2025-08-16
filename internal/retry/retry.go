@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"strings"
 	"time"
 )
 
@@ -167,27 +168,11 @@ func (r *Retrier) isRetryable(err error) bool {
 		return false
 	}
 	
-	errStr := err.Error()
+	errStr := strings.ToLower(err.Error())
 	
 	// Check against configured retryable errors
 	for _, retryableErr := range r.config.RetryableErrors {
-		if contains(errStr, retryableErr) {
-			return true
-		}
-	}
-	
-	return false
-}
-
-// contains checks if a string contains a substring
-func contains(s, substr string) bool {
-	if len(s) == 0 || len(substr) == 0 {
-		return false
-	}
-	
-	// Simple substring search
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
+		if strings.Contains(errStr, strings.ToLower(retryableErr)) {
 			return true
 		}
 	}
