@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"rodmcp/internal/logger"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +28,13 @@ type EnhancedManager struct {
 	// Recovery tracking
 	recoveryAttempts map[string]int
 	recoveryMutex    sync.RWMutex
+	
+	// Browser restart tracking with backoff
+	browserRestartAttempts int
+	browserRestartMutex    sync.RWMutex
+	lastBrowserRestart     time.Time
+	restartBackoffBase     time.Duration
+	restartBackoffMax      time.Duration
 }
 
 // PageState tracks the state of a browser page for recovery
@@ -46,11 +54,13 @@ func NewEnhancedManager(log *logger.Logger, config Config) *EnhancedManager {
 	base := NewManager(log, config)
 	
 	return &EnhancedManager{
-		Manager:          base,
-		maxRetries:       3,
-		retryDelay:       1 * time.Second,
-		pageStates:       make(map[string]*PageState),
-		recoveryAttempts: make(map[string]int),
+		Manager:            base,
+		maxRetries:         3,
+		retryDelay:         1 * time.Second,
+		pageStates:         make(map[string]*PageState),
+		recoveryAttempts:   make(map[string]int),
+		restartBackoffBase: 1 * time.Second,
+		restartBackoffMax:  30 * time.Second,
 	}
 }
 
@@ -71,6 +81,10 @@ func (em *EnhancedManager) NewPageWithRetry(url string) (*rod.Page, string, erro
 		// Ensure browser is healthy before creating page
 		if err := em.EnsureHealthy(); err != nil {
 			lastErr = fmt.Errorf("browser unhealthy: %w", err)
+			// Check for context errors and handle appropriately
+			if em.isContextError(err) {
+				lastErr = em.handleContextError(err, "page_creation")
+			}
 			continue
 		}
 		
@@ -79,6 +93,12 @@ func (em *EnhancedManager) NewPageWithRetry(url string) (*rod.Page, string, erro
 			// Track page state for recovery
 			em.trackPageState(pageID, url, page)
 			return page, pageID, nil
+		}
+		
+		// Check for context errors first
+		if em.isContextError(lastErr) {
+			lastErr = em.handleContextError(lastErr, "page_creation")
+			continue // Try again after restart
 		}
 		
 		// Check if error is recoverable
@@ -109,6 +129,10 @@ func (em *EnhancedManager) NavigateWithRetry(pageID string, url string) error {
 		// Try to recover page if unhealthy
 		if err := em.ensurePageHealthy(pageID); err != nil {
 			lastErr = err
+			// Check for context errors
+			if em.isContextError(err) {
+				lastErr = em.handleContextError(err, "page_health_check")
+			}
 			continue
 		}
 		
@@ -117,6 +141,12 @@ func (em *EnhancedManager) NavigateWithRetry(pageID string, url string) error {
 			// Update page state
 			em.updatePageState(pageID, url)
 			return nil
+		}
+		
+		// Check for context errors first
+		if em.isContextError(lastErr) {
+			lastErr = em.handleContextError(lastErr, "navigation")
+			continue // Try again after restart
 		}
 		
 		// Check if error is recoverable
@@ -148,12 +178,22 @@ func (em *EnhancedManager) ScreenshotWithRetry(pageID string) ([]byte, error) {
 		// Ensure page is healthy
 		if err := em.ensurePageHealthy(pageID); err != nil {
 			lastErr = err
+			// Check for context errors
+			if em.isContextError(err) {
+				lastErr = em.handleContextError(err, "screenshot_health_check")
+			}
 			continue
 		}
 		
 		screenshot, lastErr = em.Screenshot(pageID)
 		if lastErr == nil {
 			return screenshot, nil
+		}
+		
+		// Check for context errors first
+		if em.isContextError(lastErr) {
+			lastErr = em.handleContextError(lastErr, "screenshot")
+			continue // Try again after restart
 		}
 		
 		// Check if error is recoverable
@@ -185,12 +225,22 @@ func (em *EnhancedManager) ExecuteScriptWithRetry(pageID string, script string) 
 		// Ensure page is healthy
 		if err := em.ensurePageHealthy(pageID); err != nil {
 			lastErr = err
+			// Check for context errors
+			if em.isContextError(err) {
+				lastErr = em.handleContextError(err, "script_health_check")
+			}
 			continue
 		}
 		
 		result, lastErr = em.ExecuteScript(pageID, script)
 		if lastErr == nil {
 			return result, nil
+		}
+		
+		// Check for context errors first
+		if em.isContextError(lastErr) {
+			lastErr = em.handleContextError(lastErr, "script_execution")
+			continue // Try again after restart
 		}
 		
 		// Check if error is recoverable
@@ -397,9 +447,10 @@ func (em *EnhancedManager) isRecoverableError(err error) bool {
 		return false
 	}
 	
-	errStr := err.Error()
+	errStr := strings.ToLower(err.Error())
 	recoverableErrors := []string{
 		"context canceled",
+		"context cancelled", // British spelling
 		"context deadline exceeded",
 		"timeout",
 		"connection reset",
@@ -408,10 +459,45 @@ func (em *EnhancedManager) isRecoverableError(err error) bool {
 		"browser not started",
 		"browser connection unhealthy",
 		"page not found",
+		"websocket: close",
+		"connection refused",
+		"network unreachable",
+		"no such host",
 	}
 	
 	for _, recoverable := range recoverableErrors {
-		if contains(errStr, recoverable) {
+		if strings.Contains(errStr, recoverable) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// isContextError checks if the error is related to context cancellation or timeout
+func (em *EnhancedManager) isContextError(err error) bool {
+	if err == nil {
+		return false
+	}
+	
+	// Check if it's a context error directly
+	if err == context.Canceled || err == context.DeadlineExceeded {
+		return true
+	}
+	
+	// Check error message for context-related errors
+	errStr := strings.ToLower(err.Error())
+	contextErrors := []string{
+		"context canceled",
+		"context cancelled", // British spelling
+		"context deadline exceeded",
+		"context timeout",
+		"operation was canceled",
+		"operation was cancelled",
+	}
+	
+	for _, contextErr := range contextErrors {
+		if strings.Contains(errStr, contextErr) {
 			return true
 		}
 	}
@@ -528,20 +614,124 @@ func (em *EnhancedManager) GetElementText(pageID, selector string) (string, erro
 	return "", fmt.Errorf("get text failed after %d retries: %w", em.maxRetries, lastErr)
 }
 
-// contains checks if a string contains a substring (case-insensitive)
-func contains(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 && 
-		(s == substr || (len(s) >= len(substr) && 
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || 
-		 len(substr) < len(s) && findSubstring(s, substr))))
+// RestartBrowser performs an enhanced browser restart with exponential backoff
+func (em *EnhancedManager) RestartBrowser() error {
+	em.browserRestartMutex.Lock()
+	defer em.browserRestartMutex.Unlock()
+	
+	// Calculate backoff delay based on restart attempts
+	backoffDelay := em.calculateRestartBackoff()
+	
+	// Check if we should wait before restarting
+	if time.Since(em.lastBrowserRestart) < backoffDelay {
+		remainingWait := backoffDelay - time.Since(em.lastBrowserRestart)
+		em.logger.WithComponent("browser").Info("Waiting before browser restart due to backoff",
+			zap.Duration("wait_time", remainingWait),
+			zap.Int("restart_attempts", em.browserRestartAttempts))
+		time.Sleep(remainingWait)
+	}
+	
+	em.browserRestartAttempts++
+	em.lastBrowserRestart = time.Now()
+	
+	em.logger.WithComponent("browser").Info("Performing enhanced browser restart",
+		zap.Int("attempt", em.browserRestartAttempts),
+		zap.Duration("backoff_delay", backoffDelay))
+	
+	// Store current page URLs for restoration
+	pageURLs := em.storePageURLs()
+	
+	// Perform the restart using base manager's restart functionality
+	if err := em.Manager.EnsureHealthy(); err != nil {
+		// EnsureHealthy will trigger a restart if needed
+		return fmt.Errorf("browser restart failed: %w", err)
+	}
+	
+	// Restore pages if any were open
+	if len(pageURLs) > 0 {
+		em.restorePages(pageURLs)
+	}
+	
+	// Reset restart attempts on successful restart after a grace period
+	go func() {
+		time.Sleep(5 * time.Minute)
+		em.browserRestartMutex.Lock()
+		if time.Since(em.lastBrowserRestart) >= 5*time.Minute {
+			em.browserRestartAttempts = 0
+			em.logger.WithComponent("browser").Debug("Reset browser restart attempts after stable operation")
+		}
+		em.browserRestartMutex.Unlock()
+	}()
+	
+	return nil
 }
 
-// findSubstring finds a substring in a string
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
+// calculateRestartBackoff calculates the backoff delay for browser restarts
+func (em *EnhancedManager) calculateRestartBackoff() time.Duration {
+	if em.browserRestartAttempts == 0 {
+		return 0
+	}
+	
+	// Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
+	backoff := em.restartBackoffBase
+	for i := 1; i < em.browserRestartAttempts && backoff < em.restartBackoffMax; i++ {
+		backoff *= 2
+	}
+	
+	if backoff > em.restartBackoffMax {
+		backoff = em.restartBackoffMax
+	}
+	
+	return backoff
+}
+
+// storePageURLs stores current page URLs for restoration after restart
+func (em *EnhancedManager) storePageURLs() map[string]string {
+	pageURLs := make(map[string]string)
+	
+	em.pageStatesMutex.RLock()
+	for pageID, state := range em.pageStates {
+		if state.URL != "" {
+			pageURLs[pageID] = state.URL
 		}
 	}
-	return false
+	em.pageStatesMutex.RUnlock()
+	
+	return pageURLs
+}
+
+// restorePages attempts to restore pages after browser restart
+func (em *EnhancedManager) restorePages(pageURLs map[string]string) {
+	for oldPageID, url := range pageURLs {
+		_, newPageID, err := em.NewPageWithRetry(url)
+		if err != nil {
+			em.logger.WithComponent("browser").Warn("Failed to restore page after restart",
+				zap.String("old_page_id", oldPageID),
+				zap.String("url", url),
+				zap.Error(err))
+		} else {
+			em.logger.WithComponent("browser").Info("Restored page after restart",
+				zap.String("old_page_id", oldPageID),
+				zap.String("new_page_id", newPageID),
+				zap.String("url", url))
+		}
+	}
+}
+
+// handleContextError detects context errors and triggers automatic restart
+func (em *EnhancedManager) handleContextError(err error, operation string) error {
+	if !em.isContextError(err) {
+		return err // Not a context error, return as-is
+	}
+	
+	em.logger.WithComponent("browser").Warn("Context error detected, triggering browser restart",
+		zap.String("operation", operation),
+		zap.Error(err))
+	
+	// Attempt automatic restart
+	if restartErr := em.RestartBrowser(); restartErr != nil {
+		return fmt.Errorf("context error in %s and restart failed: %v (restart error: %w)", operation, err, restartErr)
+	}
+	
+	return fmt.Errorf("context error in %s, browser restarted successfully: %w", operation, err)
 }
