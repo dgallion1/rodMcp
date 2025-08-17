@@ -32,6 +32,7 @@ type Manager struct {
 	logger         *logger.Logger
 	browser        *rod.Browser
 	pages          map[string]*rod.Page
+	pageURLs       map[string]string     // Track page URLs to avoid context issues
 	mutex          sync.RWMutex
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -67,6 +68,7 @@ func NewManager(log *logger.Logger, config Config) *Manager {
 	return &Manager{
 		logger:        log,
 		pages:         make(map[string]*rod.Page),
+		pageURLs:      make(map[string]string),
 		ctx:           ctx,
 		cancel:        cancel,
 		maxRestarts:   3,
@@ -395,6 +397,7 @@ func (m *Manager) NewPage(url string) (*rod.Page, string, error) {
 
 	m.mutex.Lock()
 	m.pages[pageID] = page
+	m.pageURLs[pageID] = url  // Store URL for reliable retrieval
 	m.mutex.Unlock()
 
 	if url != "" {
@@ -449,6 +452,7 @@ func (m *Manager) closePage(pageID string) error {
 	page, exists := m.pages[pageID]
 	if exists {
 		delete(m.pages, pageID)
+		delete(m.pageURLs, pageID)  // Also clean up URL tracking
 	}
 	m.mutex.Unlock()
 
@@ -1091,12 +1095,10 @@ func (m *Manager) GetAllPages() []PageInfo {
 			url = info.URL
 		}
 		
-		// Fallback to basic URL if available
+		// Fallback to stored URL if page.Info() failed or returned empty URL
 		if url == "" {
-			if pageInfo, err := page.Info(); err == nil && pageInfo != nil {
-				if pageInfo.URL != "" {
-					url = pageInfo.URL
-				}
+			if storedURL, exists := m.pageURLs[pageID]; exists && storedURL != "" {
+				url = storedURL
 			}
 		}
 		
@@ -1296,6 +1298,7 @@ func (m *Manager) handleBrowserDeath() {
 	// Clear pages
 	for id := range m.pages {
 		delete(m.pages, id)
+		delete(m.pageURLs, id)  // Also clean up URL tracking
 	}
 	
 	// Increment restart count

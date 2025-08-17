@@ -17,7 +17,7 @@ cat > test_commands.json << 'EOF'
 {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}}
 {"jsonrpc": "2.0", "method": "notifications/initialized"}
 {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
-{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "create_page", "arguments": {"url": "https://example.com"}}}
+{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "create_page", "arguments": {"filename": "test-page.html", "title": "Test Page", "html": "<h1>Test Page</h1><p>This is a test page.</p>"}}}
 {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "navigate_page", "arguments": {"page_id": "test", "url": "https://httpbin.org/delay/1"}}}
 {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "take_screenshot", "arguments": {"page_id": "test"}}}
 {"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "navigate_page", "arguments": {"page_id": "test", "url": "https://example.com"}}}
