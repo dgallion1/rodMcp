@@ -463,6 +463,8 @@ func (em *EnhancedManager) isRecoverableError(err error) bool {
 		"connection refused",
 		"network unreachable",
 		"no such host",
+		"connection failed",
+		"browser process died",
 	}
 	
 	for _, recoverable := range recoverableErrors {

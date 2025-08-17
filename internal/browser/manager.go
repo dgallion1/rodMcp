@@ -301,9 +301,12 @@ func (m *Manager) Stop() error {
 	for id, page := range m.pages {
 		if page != nil {
 			if err := page.Close(); err != nil {
-				m.logger.WithComponent("browser").Error("Failed to close page",
-					zap.String("page_id", id),
-					zap.Error(err))
+				// Only log non-context cancellation errors
+				if !strings.Contains(err.Error(), "context canceled") {
+					m.logger.WithComponent("browser").Error("Failed to close page",
+						zap.String("page_id", id),
+						zap.Error(err))
+				}
 			}
 		}
 	}
@@ -323,8 +326,13 @@ func (m *Manager) Stop() error {
 			
 			// Try to close the browser - any panic will be caught by the defer above
 			if err := m.browser.Close(); err != nil {
-				m.logger.WithComponent("browser").Error("Failed to close browser",
-					zap.Error(err))
+				// Only log non-context and non-connection errors
+				errStr := err.Error()
+				if !strings.Contains(errStr, "context canceled") && 
+				   !strings.Contains(errStr, "use of closed network connection") {
+					m.logger.WithComponent("browser").Error("Failed to close browser",
+						zap.Error(err))
+				}
 			}
 		}()
 		m.browser = nil // Ensure it's marked as nil after close attempt

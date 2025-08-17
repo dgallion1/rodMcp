@@ -147,7 +147,8 @@ func ValidateURL(url string, toolName string) error {
 	// Validate protocol
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") && 
 	   !strings.HasPrefix(url, "file://") && !strings.HasPrefix(url, "./") && 
-	   !strings.HasPrefix(url, "../") && !strings.Contains(url, "localhost") {
+	   !strings.HasPrefix(url, "../") && !strings.Contains(url, "localhost") &&
+	   !strings.HasPrefix(url, "/") {
 		return &ValidationError{
 			Field:   "url",
 			Value:   url,
