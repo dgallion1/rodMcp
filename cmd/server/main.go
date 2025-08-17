@@ -670,9 +670,9 @@ ENVIRONMENT VARIABLES:
     
     Version: %s | Build: %s | Go: 1.24.5+ | MCP: 2024-11-05
 `, 
-		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], 
-		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], 
-		os.Args[0], os.Args[0], os.Args[0], os.Args[0], Version, Commit)
+		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0],
+		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0],
+		os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], Version, Commit)
 }
 
 func listTools() {
@@ -757,7 +757,7 @@ func describeTool(toolName string) {
 	schema := tool.InputSchema()
 	
 	fmt.Printf("🛠️  Tool: %s\n", tool.Name())
-	fmt.Printf("=" + strings.Repeat("=", len(tool.Name())+10) + "\n")
+	fmt.Println("=" + strings.Repeat("=", len(tool.Name())+10))
 	fmt.Printf("📖 Description: %s\n\n", tool.Description())
 	
 	fmt.Printf("📋 Parameters:\n")

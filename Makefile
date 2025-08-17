@@ -124,7 +124,7 @@ define stop_existing_processes
 	rm -f /tmp/rodmcp-http-manager.* 2>/dev/null || true
 endef
 
-.PHONY: help build clean test install install-local uninstall demo config-visible config-headless dev check fmt lint vet deps update-deps install-go check-go stop-processes
+.PHONY: help build clean test coverage install install-local uninstall demo config-visible config-headless dev check fmt lint vet deps update-deps install-go check-go stop-processes
 
 # Default target
 all: build
@@ -265,6 +265,12 @@ rebuild: clean build
 test: check-go-available
 	@echo "$(BLUE)Running tests...$(NC)"
 	$(GO_BIN) test -v ./...
+	@echo "$(GREEN)✓ Tests complete$(NC)"
+
+## Test-coverage - Run tests with coverage
+test-coverage: check-go-available
+	@echo "$(BLUE)Running tests with coverage...$(NC)"
+	./test-coverage.sh
 	@echo "$(GREEN)✓ Tests complete$(NC)"
 
 ## Test Comprehensive - Run comprehensive test suite for all MCP tools

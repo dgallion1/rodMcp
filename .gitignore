@@ -16,6 +16,7 @@ cmd/*/main
 *.html
 *.png
 !examples/*.html
+coverage.out
 
 # Logs
 *.log
