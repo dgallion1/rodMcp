@@ -19,7 +19,7 @@ cmd/*/main
 coverage.out
 
 # Test coverage reports
-coverage.out
+coverage*.out
 *_coverage.out
 *.coverprofile
 
