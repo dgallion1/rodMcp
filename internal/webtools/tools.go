@@ -1336,11 +1336,12 @@ func (t *BrowserVisibilityTool) InputSchema() types.ToolSchema {
 }
 
 func (t *BrowserVisibilityTool) Execute(args map[string]interface{}) (*types.CallToolResponse, error) {
-	start := time.Now()
-	defer func() {
-		duration := time.Since(start).Milliseconds()
-		t.logger.LogToolExecution(t.Name(), args, true, duration)
-	}()
+	return executeWithPanicRecovery(t.Name(), t.logger, func() (*types.CallToolResponse, error) {
+		start := time.Now()
+		defer func() {
+			duration := time.Since(start).Milliseconds()
+			t.logger.LogToolExecution(t.Name(), args, true, duration)
+		}()
 
 	visible, ok := args["visible"].(bool)
 	if !ok {
@@ -1388,6 +1389,7 @@ func (t *BrowserVisibilityTool) Execute(args map[string]interface{}) (*types.Cal
 			},
 		}},
 	}, nil
+	})
 }
 
 // LivePreviewTool creates a simple HTTP server for live preview
