@@ -160,8 +160,21 @@ func TestRealisticPageOperations(t *testing.T) {
 		if scriptErr != nil {
 			return scriptErr
 		}
-		if resultStr, ok := result.(string); !ok || !strings.Contains(resultStr, "Test Operations") {
-			return fmt.Errorf("unexpected script result: %v", result)
+		// Convert result to string for comparison, handling different types
+		var resultStr string
+		switch v := result.(type) {
+		case string:
+			resultStr = v
+		case []byte:
+			resultStr = string(v)
+		default:
+			resultStr = fmt.Sprintf("%v", result)
+		}
+		
+		// Trim quotes and whitespace since result may be JSON-encoded
+		cleanResult := strings.Trim(strings.TrimSpace(resultStr), `"`)
+		if !strings.Contains(cleanResult, "Test Operations") {
+			return fmt.Errorf("unexpected script result: %q (type: %T, expected to contain 'Test Operations')", result, result)
 		}
 		return nil
 	}, 10*time.Second)

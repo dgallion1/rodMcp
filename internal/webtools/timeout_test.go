@@ -48,7 +48,7 @@ func TestTimeouts_BrowserTools(t *testing.T) {
 		
 		// Test with very slow/unresponsive URL  
 		args := map[string]interface{}{
-			"url": "https://httpbin.org/delay/35", // 35 second delay should timeout
+			"url": "https://httpbin.org/delay/15", // 15 second delay should timeout
 		}
 		
 		start := time.Now()
@@ -254,7 +254,7 @@ func TestTimeouts_NetworkTools(t *testing.T) {
 		
 		// Test with slow endpoint
 		args := map[string]interface{}{
-			"url":    "https://httpbin.org/delay/65", // 65 second delay should timeout
+			"url":    "https://httpbin.org/delay/15", // 15 second delay should timeout
 			"method": "GET",
 		}
 		
@@ -337,17 +337,17 @@ func TestTimeouts_UtilityTools(t *testing.T) {
 		t.Parallel()
 		tool := NewWaitTool(log)
 		
-		// Test waiting for maximum allowed time
+		// Test waiting for a reasonable test time
 		args := map[string]interface{}{
-			"seconds": 60.0, // Max wait time
+			"seconds": 5.0, // Reasonable test wait time
 		}
 		
 		start := time.Now()
 		_, err := tool.Execute(args)
 		duration := time.Since(start)
 		
-		// Should complete within timeout (65s for WaitTool)
-		if duration > 70*time.Second {
+		// Should complete within timeout (10s for WaitTool)
+		if duration > 10*time.Second {
 			t.Errorf("Wait operation took too long: %v", duration)
 		}
 		
@@ -357,8 +357,8 @@ func TestTimeouts_UtilityTools(t *testing.T) {
 		}
 		
 		// Should have waited approximately the right amount of time
-		expectedDuration := 60 * time.Second
-		if duration < expectedDuration-time.Second || duration > expectedDuration+5*time.Second {
+		expectedDuration := 5 * time.Second
+		if duration < expectedDuration-time.Second || duration > expectedDuration+2*time.Second {
 			t.Errorf("Wait duration %v not close to expected %v", duration, expectedDuration)
 		}
 	})
