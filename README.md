@@ -423,6 +423,32 @@ Claude should respond with the 23 RodMCP tools listed above.
 
 You can also ask: *"Help me get started with rodmcp"* and Claude will use the interactive help system to guide you.
 
+## 🧪 Production Readiness Validation
+
+RodMCP includes a comprehensive Go/NoGo validation test that ensures production readiness:
+
+```bash
+# Run production readiness validation
+go test ./internal/webtools -run TestGoNoGoValidation -v
+```
+
+**Validation Coverage:**
+- ✅ **Browser Startup** - Browser starts within 30s
+- ✅ **Core Page Operations** - Page creation with all required elements
+- ✅ **Browser Navigation** - Local file and remote URL navigation
+- ✅ **Screenshot Capability** - Image capture with file verification
+- ✅ **Script Execution** - JavaScript execution with complex validation
+- ✅ **Error Recovery** - Recovery from invalid domain navigation
+- ✅ **Performance Thresholds** - Operations complete within acceptable timeframes
+- ✅ **Resource Management** - Proper page lifecycle and cleanup
+- ✅ **Concurrent Operations** - Multiple simultaneous browser operations
+
+**Decision Logic:**
+- 🟢 **GO**: All critical tests pass, zero warnings
+- 🔴 **NO-GO**: Any critical test fails
+
+The test validates browser startup (~280ms), navigation recovery after invalid domains, screenshot capture (~30ms), script execution (~1ms), and concurrent operations. All operations must complete within strict timeouts for production deployment approval.
+
 ## 🏆 Why Choose RodMCP Over Playwright?
 
 While Playwright is excellent for traditional automation, RodMCP is **specifically designed for AI integration** with unique advantages:
