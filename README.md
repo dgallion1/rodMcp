@@ -11,9 +11,10 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 - 🧠 **Smart Browser Lifecycle** - **Proactive health monitoring** with automatic browser restart on corruption detection
 - ⚡ **Zero Timeouts** - **Immediate error responses** instead of hanging operations (fixes Claude Code timeouts)
 - 🎬 **Visible Browser Mode** - Watch Claude work in real-time or run headless (browser visibility fixed!)
-- 🛠️ **26 Comprehensive Tools** - Complete browser control + screen scraping + table extraction + file system + HTTP requests + interactive help
+- 🛠️ **27 Comprehensive Tools** - Complete browser control + screen scraping + table extraction + file system + HTTP requests + interactive help
 - ⏰ **Comprehensive Timeout Protection** - All operations have timeouts (15-60s depending on complexity) - **no infinite waiting**
 - 🛡️ **Advanced Panic Recovery** - **Full stack trace logging** with graceful error handling prevents crashes from Rod library panics
+- 🧪 **Concurrent Testing** - Parallel timeout tests verify all tools handle timeouts correctly
 - 🛡️ **Error Guidance** - Helpful error messages guide you to correct next steps instead of cryptic failures
 - 📊 **Memory Protection** - Circular buffer management with overflow protection prevents memory exhaustion
 - 🏠 **Easy Install** - No sudo required with local user installation
@@ -22,7 +23,7 @@ A Go-based Model Context Protocol (MCP) server that provides web development too
 
 ## 🛠️ Available Tools
 
-Once installed, Claude gains access to these 26 comprehensive web development tools:
+Once installed, Claude gains access to these 27 comprehensive web development tools:
 
 ### 🌐 Browser Automation Tools
 

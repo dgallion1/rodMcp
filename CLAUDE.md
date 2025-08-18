@@ -1,0 +1,2 @@
+- Do not user mock's for testing.
+- All endpoints must have timeouts and panic protection

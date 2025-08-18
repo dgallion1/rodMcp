@@ -1,6 +1,18 @@
 # RodMCP API Reference
 
-Complete reference documentation for all 26 RodMCP tools, organized by category with detailed parameters, examples, and usage patterns.
+Complete reference documentation for all 27 RodMCP tools, organized by category with detailed parameters, examples, and usage patterns.
+
+## ⏰ Timeout Protection
+
+All RodMCP tools include comprehensive timeout protection to prevent hanging operations:
+
+- **Browser Operations**: 30-second timeouts for page interactions, navigation, and script execution
+- **File System Operations**: 15-30 second timeouts based on operation complexity
+- **Network Operations**: 60-second timeouts for HTTP requests
+- **Utility Operations**: 60+ second timeouts for wait operations
+- **Panic Recovery**: All tools wrapped with `executeWithPanicRecovery` for crash protection
+
+Operations that exceed timeouts return immediate error responses instead of hanging indefinitely.
 
 ## 🌐 Browser Automation Tools
 
